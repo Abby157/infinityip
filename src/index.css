@@ -1,0 +1,33 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: #080810;
+  color: #fff;
+  font-family: 'Inter', 'Segoe UI', sans-serif;
+  overscroll-behavior: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+input, textarea, select, button {
+  font-family: inherit;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #ffffff15; border-radius: 99px; }
+
+/* Desktop sidebar */
+@media (min-width: 768px) {
+  .desktop-sidebar { display: flex !important; }
+}
