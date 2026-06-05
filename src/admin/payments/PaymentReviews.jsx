@@ -73,6 +73,7 @@ await updateDoc(doc(db, 'orders', order.id), {
   ipAddress:     ip,
   approvedAt:    serverTimestamp(),
   expiryDate:    expiryDate,
+  expiryAlertSent: false,
   renewalStatus: 'active',
 })
       // Notify user
