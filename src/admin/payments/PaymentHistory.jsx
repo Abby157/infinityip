@@ -10,6 +10,19 @@ const STATUS_CONFIG = {
 
 const CRYPTO_ICONS = { BTC: '₿', ETH: 'Ξ', USDT: '₮' }
 
+const r = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min
+
+const generateIP = () => {
+  const ranges = [
+    () => `104.${r(16,31)}.${r(0,255)}.${r(1,254)}`,
+    () => `172.${r(64,95)}.${r(0,255)}.${r(1,254)}`,
+    () => `185.${r(0,255)}.${r(0,255)}.${r(1,254)}`,
+    () => `45.${r(32,63)}.${r(0,255)}.${r(1,254)}`,
+    () => `23.${r(32,95)}.${r(0,255)}.${r(1,254)}`,
+  ]
+  return ranges[Math.floor(Math.random() * ranges.length)]()
+}
+
 export default function PaymentHistory() {
   const [payments,  setPayments]  = useState([])
   const [loading,   setLoading]   = useState(true)
@@ -36,29 +49,47 @@ export default function PaymentHistory() {
   const approve = async (payment) => {
     setActing(true)
     try {
+      const ip = generateIP()
+      const expiryDate = new Date()
+      expiryDate.setDate(expiryDate.getDate() + 30)
+
+      // Update payment status
       await updateDoc(doc(db, 'payments', payment.id), {
         status:     'approved',
         approvedAt: serverTimestamp(),
       })
+
+      // Update order with ALL fields
       if (payment.orderId) {
         await updateDoc(doc(db, 'orders', payment.orderId), {
-          status:        'under_review',
-          paymentStatus: 'submitted',
-          updatedAt:     serverTimestamp(),
+          status:          'active',
+          paymentStatus:   'paid',
+          ipAddress:       ip,
+          approvedAt:      serverTimestamp(),
+          expiryDate:      expiryDate,
+          renewalStatus:   'active',
+          expiryAlertSent: false,
+          updatedAt:       serverTimestamp(),
         })
       }
+
+      // Notify user
       await addDoc(collection(db, 'notifications'), {
         userId:    payment.userId,
         type:      'payment',
         title:     'Payment Approved ✅',
-        message:   `Your payment of $${payment.amount} has been approved.`,
+        message:   `Your payment of $${payment.amount} has been approved. Your IP ${ip} is now active and expires on ${expiryDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}.`,
         read:      false,
         createdAt: serverTimestamp(),
       })
+
       setPayments(prev => prev.map(p => p.id === payment.id ? { ...p, status: 'approved' } : p))
       setSelected(null)
-      showToast('✅ Payment approved')
-    } catch (err) { console.error(err) }
+      showToast(`✅ Payment approved — IP ${ip} assigned`)
+    } catch (err) {
+      console.error(err)
+      showToast('❌ Error approving payment')
+    }
     setActing(false)
   }
 
@@ -69,24 +100,35 @@ export default function PaymentHistory() {
         status:     'rejected',
         rejectedAt: serverTimestamp(),
       })
+
+      if (payment.orderId) {
+        await updateDoc(doc(db, 'orders', payment.orderId), {
+          status:    'rejected',
+          updatedAt: serverTimestamp(),
+        })
+      }
+
       await addDoc(collection(db, 'notifications'), {
         userId:    payment.userId,
         type:      'alert',
         title:     'Payment Rejected ❌',
-        message:   `Your payment of $${payment.amount} was rejected. Please contact support.`,
+        message:   `Your payment of $${payment.amount} was rejected. Please contact support for assistance.`,
         read:      false,
         createdAt: serverTimestamp(),
       })
+
       setPayments(prev => prev.map(p => p.id === payment.id ? { ...p, status: 'rejected' } : p))
       setSelected(null)
       showToast('❌ Payment rejected')
-    } catch (err) { console.error(err) }
+    } catch (err) {
+      console.error(err)
+      showToast('❌ Error rejecting payment')
+    }
     setActing(false)
   }
 
   const tabs = ['all', 'under_review', 'approved', 'rejected']
   const filtered = filter === 'all' ? payments : payments.filter(p => p.status === filter)
-
   const pendingCount = payments.filter(p => p.status === 'under_review').length
 
   return (
@@ -142,9 +184,9 @@ export default function PaymentHistory() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {filtered.map(payment => {
-                const sc     = STATUS_CONFIG[payment.status] || STATUS_CONFIG.under_review
-                const date   = payment.createdAt?.toDate?.()?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) || '—'
-                const isSel  = selected?.id === payment.id
+                const sc        = STATUS_CONFIG[payment.status] || STATUS_CONFIG.under_review
+                const date      = payment.createdAt?.toDate?.()?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) || '—'
+                const isSel     = selected?.id === payment.id
                 const isRenewal = !!payment.txid && !payment.method
 
                 return (
@@ -159,12 +201,10 @@ export default function PaymentHistory() {
                       display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap',
                     }}
                   >
-                    {/* Icon */}
                     <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#6366f115', border: '1px solid #6366f130', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', flexShrink: 0 }}>
                       {payment.method === 'giftcard' ? '🎁' : CRYPTO_ICONS[payment.currency] || '💳'}
                     </div>
 
-                    {/* Info */}
                     <div style={{ flex: 1, minWidth: '130px' }}>
                       <div style={{ color: '#fff', fontWeight: 700, fontSize: '13px', marginBottom: '2px' }}>
                         {payment.userEmail}
@@ -175,13 +215,11 @@ export default function PaymentHistory() {
                       </div>
                     </div>
 
-                    {/* Amount */}
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ color: '#fff', fontWeight: 800, fontSize: '15px' }}>${payment.amount?.toLocaleString()}</div>
                       <div style={{ color: '#4b5563', fontSize: '10px' }}>{date}</div>
                     </div>
 
-                    {/* Status */}
                     <div style={{ background: sc.bg, border: `1px solid ${sc.color}44`, borderRadius: '20px', padding: '3px 10px', color: sc.color, fontSize: '10px', fontWeight: 700, whiteSpace: 'nowrap' }}>
                       {sc.label}
                     </div>
@@ -200,15 +238,14 @@ export default function PaymentHistory() {
               <button onClick={() => setSelected(null)} style={{ background: '#ffffff0d', border: '1px solid #ffffff10', color: '#9ca3af', width: '26px', height: '26px', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' }}>×</button>
             </div>
 
-            {/* Info rows */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '14px' }}>
               {[
-                { label: 'Payment ID',  value: selected.id.slice(0,12)+'…' },
-                { label: 'User',        value: selected.userEmail },
-                { label: 'Method',      value: selected.method === 'giftcard' ? '🎁 Gift Card' : `₿ Crypto (${selected.currency})` },
-                { label: 'Amount',      value: `$${selected.amount?.toLocaleString()}` },
-                { label: 'Status',      value: selected.status?.replace('_',' ') },
-                { label: 'Submitted',   value: selected.createdAt?.toDate?.()?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) || '—' },
+                { label: 'Payment ID', value: selected.id.slice(0,12)+'…' },
+                { label: 'User',       value: selected.userEmail },
+                { label: 'Method',     value: selected.method === 'giftcard' ? '🎁 Gift Card' : `₿ Crypto (${selected.currency})` },
+                { label: 'Amount',     value: `$${selected.amount?.toLocaleString()}` },
+                { label: 'Status',     value: selected.status?.replace('_',' ') },
+                { label: 'Submitted',  value: selected.createdAt?.toDate?.()?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) || '—' },
               ].map(row => (
                 <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
                   <span style={{ color: '#6b7280', fontSize: '11px' }}>{row.label}</span>
@@ -216,7 +253,6 @@ export default function PaymentHistory() {
                 </div>
               ))}
 
-              {/* TXID */}
               {selected.txid && (
                 <div style={{ background: '#ffffff05', border: '1px solid #ffffff0a', borderRadius: '8px', padding: '8px 10px', marginTop: '4px' }}>
                   <div style={{ color: '#6b7280', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '3px' }}>Transaction ID</div>
@@ -224,7 +260,6 @@ export default function PaymentHistory() {
                 </div>
               )}
 
-              {/* Gift card code */}
               {selected.cardCode && (
                 <div style={{ background: '#ffffff05', border: '1px solid #ffffff0a', borderRadius: '8px', padding: '8px 10px', marginTop: '4px' }}>
                   <div style={{ color: '#6b7280', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '3px' }}>Gift Card Code</div>
@@ -233,7 +268,6 @@ export default function PaymentHistory() {
               )}
             </div>
 
-            {/* Screenshot */}
             {selected.screenshotURL && (
               <div style={{ marginBottom: '14px' }}>
                 <div style={{ color: '#6b7280', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>Payment Screenshot</div>
@@ -247,7 +281,6 @@ export default function PaymentHistory() {
               </div>
             )}
 
-            {/* Actions */}
             {selected.status === 'under_review' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <button onClick={() => approve(selected)} disabled={acting} style={{ background: acting ? '#22c55e30' : 'linear-gradient(135deg,#22c55e,#16a34a)', border: 'none', color: '#fff', borderRadius: '10px', padding: '10px', cursor: acting ? 'not-allowed' : 'pointer', fontWeight: 800, fontSize: '13px' }}>
@@ -274,7 +307,6 @@ export default function PaymentHistory() {
         )}
       </div>
 
-      {/* Image modal */}
       {imgModal && (
         <div
           onClick={() => setImgModal(null)}
