@@ -68,11 +68,12 @@ export default function PaymentReviews() {
 expiryDate.setDate(expiryDate.getDate() + 30)
 
 await updateDoc(doc(db, 'orders', order.id), {
-  status:        'active',
+  testField: 'HELLO_FROM_APPROVE',
+  status: 'active',
   paymentStatus: 'paid',
-  ipAddress:     ip,
-  approvedAt:    serverTimestamp(),
-  expiryDate:    expiryDate,
+  ipAddress: ip,
+  approvedAt: serverTimestamp(),
+  expiryDate: expiryDate,
   expiryAlertSent: false,
   renewalStatus: 'active',
 })
