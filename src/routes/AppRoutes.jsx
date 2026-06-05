@@ -16,6 +16,7 @@ import Support from '../pages/support/Support'
 import Profile from '../pages/profile/Profile'
 import AdminPanel from '../admin/AdminPanel'
 import PaymentSubmit from '../pages/payment/PaymentSubmit'
+import RenewIP from '../pages/resources/RenewIP'
 
 function ProtectedRoute({ children }) {
   const { user } = useAuth()
@@ -56,6 +57,7 @@ export default function AppRoutes() {
         <Route path="/profile" element={<Profile />} />
         <Route path="/admin" element={<AdminRoute><AdminPanel /></AdminRoute>} />
         <Route path="/payment" element={<PaymentSubmit />} />
+        <Route path="/renew" element={<RenewIP />} />
       </Route>
 
       {/* ── Catch all ─────────────────────────────────────────── */}

@@ -14,7 +14,7 @@ const TIER_COLORS = {
 const FLAG = code => `https://flagcdn.com/24x18/${code?.toLowerCase()}.png`
 
 export default function MyResources() {
-  const { user } = useAuth()
+  const { user }  = useAuth()
   const navigate  = useNavigate()
   const [ips,     setIps]     = useState([])
   const [loading, setLoading] = useState(true)
@@ -62,7 +62,6 @@ export default function MyResources() {
         <div style={{ color: '#4b5563', fontSize: '11px', marginBottom: '6px' }}>My IPs</div>
         <h1 style={{ color: '#fff', fontSize: '20px', fontWeight: 900, margin: '0 0 12px', letterSpacing: '-0.5px' }}>My IPs</h1>
 
-        {/* Summary pills */}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
           {[
             { label: 'Active',  value: activeCount,  color: '#22c55e' },
@@ -76,7 +75,6 @@ export default function MyResources() {
           ))}
         </div>
 
-        {/* Tabs */}
         <div style={{ display: 'flex', gap: '0', overflowX: 'auto' }}>
           {tabs.map(tab => {
             const active = filter === tab.id
@@ -189,10 +187,21 @@ export default function MyResources() {
                   ) : null}
 
                   {/* Footer */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '10px', borderTop: '1px solid #ffffff08' }}>
-                    <div style={{ color: '#4b5563', fontSize: '11px' }}>Purchased {date}</div>
-                    <div style={{ color: '#fff', fontSize: '14px', fontWeight: 800 }}>${ip.price?.toLocaleString()}/mo</div>
+                  <div style={{ paddingTop: '10px', borderTop: '1px solid #ffffff08' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ color: '#4b5563', fontSize: '11px' }}>Purchased {date}</div>
+                      <div style={{ color: '#fff', fontSize: '14px', fontWeight: 800 }}>${ip.price?.toLocaleString()}/mo</div>
+                    </div>
+                    {ip.status === 'active' && (
+                      <button
+                        onClick={() => navigate('/renew', { state: { orderId: ip.id } })}
+                        style={{ width: '100%', marginTop: '10px', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', border: 'none', color: '#fff', borderRadius: '8px', padding: '9px', cursor: 'pointer', fontWeight: 700, fontSize: '13px' }}
+                      >
+                        🔄 Renew IP — ${ip.price?.toLocaleString()}/mo
+                      </button>
+                    )}
                   </div>
+
                 </div>
               )
             })}
