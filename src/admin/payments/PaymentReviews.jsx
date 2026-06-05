@@ -22,26 +22,28 @@ const TIER_COLOR = {
 
 const FLAG = code => `https://flagcdn.com/20x15/${code?.toLowerCase()}.png`
 
+const r = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min
+
 function generateIP() {
   const pools = [
-    () => `${r(192)}.${r(168)}.${r(255)}.${r(255)}`,
-    () => `${45 + r(10)}.${r(255)}.${r(255)}.${r(255)}`,
-    () => `${172}.${16 + r(16)}.${r(255)}.${r(255)}`,
-    () => `${104 + r(6)}.${r(255)}.${r(255)}.${r(255)}`,
+    () => `104.${r(16,31)}.${r(0,255)}.${r(1,254)}`,
+    () => `172.${r(64,95)}.${r(0,255)}.${r(1,254)}`,
+    () => `185.${r(0,255)}.${r(0,255)}.${r(1,254)}`,
+    () => `45.${r(32,63)}.${r(0,255)}.${r(1,254)}`,
+    () => `23.${r(32,95)}.${r(0,255)}.${r(1,254)}`,
   ]
-  function r(n) { return Math.floor(Math.random() * n) }
   return pools[Math.floor(Math.random() * pools.length)]()
 }
 
 export default function PaymentReviews() {
-  const [orders,   setOrders]   = useState([])
-  const [loading,  setLoading]  = useState(true)
-  const [filter,   setFilter]   = useState('pending')
-  const [selected, setSelected] = useState(null)
-  const [acting,   setActing]   = useState(false)
+  const [orders,       setOrders]       = useState([])
+  const [loading,      setLoading]      = useState(true)
+  const [filter,       setFilter]       = useState('pending')
+  const [selected,     setSelected]     = useState(null)
+  const [acting,       setActing]       = useState(false)
   const [rejectReason, setRejectReason] = useState('')
   const [showReject,   setShowReject]   = useState(false)
-  const [toast, setToast] = useState('')
+  const [toast,        setToast]        = useState('')
 
   useEffect(() => { load() }, [])
 
@@ -65,34 +67,38 @@ export default function PaymentReviews() {
     try {
       const ip = generateIP()
       const expiryDate = new Date()
-expiryDate.setDate(expiryDate.getDate() + 30)
+      expiryDate.setDate(expiryDate.getDate() + 30)
 
-await updateDoc(doc(db, 'orders', order.id), {
-  testField: 'HELLO_FROM_APPROVE',
-  status: 'active',
-  paymentStatus: 'paid',
-  ipAddress: ip,
-  approvedAt: serverTimestamp(),
-  expiryDate: expiryDate,
-  expiryAlertSent: false,
-  renewalStatus: 'active',
-})
-      // Notify user
+      await updateDoc(doc(db, 'orders', order.id), {
+        status:          'active',
+        paymentStatus:   'paid',
+        ipAddress:       ip,
+        approvedAt:      serverTimestamp(),
+        expiryDate:      expiryDate,
+        expiryAlertSent: false,
+        renewalStatus:   'active',
+        updatedAt:       serverTimestamp(),
+      })
+
       await addDoc(collection(db, 'notifications'), {
         userId:    order.userId,
         type:      'payment',
         title:     'Payment Approved ✅',
-        message:   `Your ${order.tier?.toUpperCase()} IP in ${order.city} has been activated. IP: ${ip}`,
+        message:   `Your ${order.tier?.toUpperCase()} IP in ${order.city} has been activated. IP: ${ip}. Expires: ${expiryDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`,
         read:      false,
         createdAt: serverTimestamp(),
       })
+
       setOrders(prev => prev.map(o => o.id === order.id
-        ? { ...o, status: 'active', paymentStatus: 'paid', ipAddress: ip }
+        ? { ...o, status: 'active', paymentStatus: 'paid', ipAddress: ip, expiryDate }
         : o
       ))
       setSelected(null)
       showToast(`✅ Approved! IP ${ip} assigned to ${order.userEmail}`)
-    } catch (err) { console.error(err) }
+    } catch (err) {
+      console.error(err)
+      showToast('❌ Error approving order')
+    }
     setActing(false)
   }
 
@@ -105,7 +111,9 @@ await updateDoc(doc(db, 'orders', order.id), {
         paymentStatus:   'failed',
         rejectionReason: rejectReason.trim(),
         rejectedAt:      serverTimestamp(),
+        updatedAt:       serverTimestamp(),
       })
+
       await addDoc(collection(db, 'notifications'), {
         userId:    order.userId,
         type:      'alert',
@@ -114,6 +122,7 @@ await updateDoc(doc(db, 'orders', order.id), {
         read:      false,
         createdAt: serverTimestamp(),
       })
+
       setOrders(prev => prev.map(o => o.id === order.id
         ? { ...o, status: 'rejected', paymentStatus: 'failed', rejectionReason: rejectReason.trim() }
         : o
@@ -122,14 +131,20 @@ await updateDoc(doc(db, 'orders', order.id), {
       setShowReject(false)
       setRejectReason('')
       showToast(`❌ Order rejected for ${order.userEmail}`)
-    } catch (err) { console.error(err) }
+    } catch (err) {
+      console.error(err)
+      showToast('❌ Error rejecting order')
+    }
     setActing(false)
   }
 
   const markUnderReview = async (order) => {
     setActing(true)
     try {
-      await updateDoc(doc(db, 'orders', order.id), { status: 'under_review' })
+      await updateDoc(doc(db, 'orders', order.id), {
+        status:    'under_review',
+        updatedAt: serverTimestamp(),
+      })
       await addDoc(collection(db, 'notifications'), {
         userId:    order.userId,
         type:      'order',
@@ -141,7 +156,10 @@ await updateDoc(doc(db, 'orders', order.id), {
       setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'under_review' } : o))
       setSelected(null)
       showToast(`🔍 Marked under review`)
-    } catch (err) { console.error(err) }
+    } catch (err) {
+      console.error(err)
+      showToast('❌ Error updating order')
+    }
     setActing(false)
   }
 
@@ -182,7 +200,7 @@ await updateDoc(doc(db, 'orders', order.id), {
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', flexWrap: 'wrap' }}>
         {tabs.map(tab => {
-          const count = tab.id === 'all' ? orders.length : orders.filter(o => o.status === tab.id).length
+          const count  = tab.id === 'all' ? orders.length : orders.filter(o => o.status === tab.id).length
           const active = filter === tab.id
           return (
             <button key={tab.id} onClick={() => setFilter(tab.id)} style={{
@@ -198,7 +216,6 @@ await updateDoc(doc(db, 'orders', order.id), {
         })}
       </div>
 
-      {/* Orders list + detail panel */}
       <div style={{ display: 'grid', gridTemplateColumns: selected ? '1fr 380px' : '1fr', gap: '14px', alignItems: 'start' }}>
 
         {/* List */}
@@ -213,9 +230,9 @@ await updateDoc(doc(db, 'orders', order.id), {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {filtered.map(order => {
-                const sc   = STATUS_COLOR[order.status] || STATUS_COLOR.pending
-                const tc   = TIER_COLOR[order.tier] || '#6b7280'
-                const date = order.createdAt?.toDate?.()?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) || '—'
+                const sc         = STATUS_COLOR[order.status] || STATUS_COLOR.pending
+                const tc         = TIER_COLOR[order.tier] || '#6b7280'
+                const date       = order.createdAt?.toDate?.()?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) || '—'
                 const isSelected = selected?.id === order.id
 
                 return (
@@ -265,31 +282,44 @@ await updateDoc(doc(db, 'orders', order.id), {
               <button onClick={() => { setSelected(null); setShowReject(false) }} style={{ background: '#ffffff0d', border: '1px solid #ffffff10', color: '#9ca3af', width: '28px', height: '28px', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' }}>×</button>
             </div>
 
-            {/* Info rows */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
               {[
-                { label: 'Order ID',    value: selected.id.slice(0, 14) + '…' },
-                { label: 'User',        value: selected.userEmail },
-                { label: 'Location',    value: `${selected.city}, ${selected.country}` },
-                { label: 'Region',      value: selected.region },
-                { label: 'IP Type',     value: selected.ipType },
-                { label: 'Tier',        value: selected.tier?.toUpperCase() },
-                { label: 'Price',       value: `$${selected.price?.toLocaleString()}/mo` },
-                { label: 'Status',      value: selected.status?.replace('_', ' ') },
-                { label: 'Payment',     value: selected.paymentStatus || 'unpaid' },
-                { label: 'Placed',      value: selected.createdAt?.toDate?.()?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) || '—' },
+                { label: 'Order ID',  value: selected.id.slice(0,14)+'…' },
+                { label: 'User',      value: selected.userEmail },
+                { label: 'Location',  value: `${selected.city}, ${selected.country}` },
+                { label: 'Region',    value: selected.region },
+                { label: 'IP Type',   value: selected.ipType },
+                { label: 'Tier',      value: selected.tier?.toUpperCase() },
+                { label: 'Price',     value: `$${selected.price?.toLocaleString()}/mo` },
+                { label: 'Status',    value: selected.status?.replace('_',' ') },
+                { label: 'Payment',   value: selected.paymentStatus || 'unpaid' },
+                { label: 'Placed',    value: selected.createdAt?.toDate?.()?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) || '—' },
               ].map(row => (
                 <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
                   <span style={{ color: '#6b7280', fontSize: '11px' }}>{row.label}</span>
                   <span style={{ color: '#fff', fontSize: '11px', fontWeight: 600, textAlign: 'right', maxWidth: '180px', wordBreak: 'break-all' }}>{row.value}</span>
                 </div>
               ))}
+
               {selected.ipAddress && (
                 <div style={{ background: '#22c55e0d', border: '1px solid #22c55e33', borderRadius: '8px', padding: '8px 10px', marginTop: '4px' }}>
                   <div style={{ color: '#6b7280', fontSize: '10px', marginBottom: '2px' }}>ASSIGNED IP</div>
                   <div style={{ color: '#4ade80', fontSize: '13px', fontWeight: 800, fontFamily: 'monospace' }}>{selected.ipAddress}</div>
                 </div>
               )}
+
+              {selected.expiryDate && (
+                <div style={{ background: '#f59e0b0d', border: '1px solid #f59e0b33', borderRadius: '8px', padding: '8px 10px', marginTop: '4px' }}>
+                  <div style={{ color: '#6b7280', fontSize: '10px', marginBottom: '2px' }}>EXPIRY DATE</div>
+                  <div style={{ color: '#fbbf24', fontSize: '12px', fontWeight: 700 }}>
+                    {selected.expiryDate?.toDate
+                      ? selected.expiryDate.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                      : new Date(selected.expiryDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                    }
+                  </div>
+                </div>
+              )}
+
               {selected.rejectionReason && (
                 <div style={{ background: '#ef44440d', border: '1px solid #ef444433', borderRadius: '8px', padding: '8px 10px', marginTop: '4px' }}>
                   <div style={{ color: '#6b7280', fontSize: '10px', marginBottom: '2px' }}>REJECTION REASON</div>
@@ -298,7 +328,6 @@ await updateDoc(doc(db, 'orders', order.id), {
               )}
             </div>
 
-            {/* Actions */}
             {(selected.status === 'pending' || selected.status === 'under_review') && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {selected.status === 'pending' && (
