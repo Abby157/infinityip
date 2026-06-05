@@ -4,52 +4,44 @@ import { useAuth } from '../../contexts/AuthContext'
 import { doc, getDoc, addDoc, updateDoc, collection, serverTimestamp } from 'firebase/firestore'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { db, storage } from '../../firebase/config'
+import { sendPaymentReceivedEmail } from '../../services/emailService'
 
 const CRYPTO_OPTIONS = [
-  {
-    id: 'btc', label: 'Bitcoin', symbol: 'BTC', icon: '₿',
-    color: '#f59e0b', network: 'Bitcoin Network',
-  },
-  {
-    id: 'eth', label: 'Ethereum', symbol: 'ETH', icon: 'Ξ',
-    color: '#6366f1', network: 'ERC-20',
-  },
-  {
-    id: 'usdt', label: 'Tether', symbol: 'USDT', icon: '₮',
-    color: '#22c55e', network: 'TRC-20 / ERC-20',
-  },
+  { id: 'btc',  label: 'Bitcoin',  symbol: 'BTC',  icon: '₿', color: '#f59e0b', network: 'Bitcoin Network' },
+  { id: 'eth',  label: 'Ethereum', symbol: 'ETH',  icon: 'Ξ', color: '#6366f1', network: 'ERC-20' },
+  { id: 'usdt', label: 'Tether',   symbol: 'USDT', icon: '₮', color: '#22c55e', network: 'TRC-20 / ERC-20' },
 ]
 
 const GIFT_CARD_OPTIONS = [
-  { id: 'apple',  label: 'Apple Gift Card',  icon: '🍎', color: '#9ca3af' },
-  { id: 'steam',  label: 'Steam Gift Card',  icon: '🎮', color: '#1b2838' },
-  { id: 'razer',  label: 'Razer Gold',       icon: '💚', color: '#00d448' },
+  { id: 'apple', label: 'Apple Gift Card', icon: '🍎', color: '#9ca3af' },
+  { id: 'steam', label: 'Steam Gift Card', icon: '🎮', color: '#1b2838' },
+  { id: 'razer', label: 'Razer Gold',      icon: '💚', color: '#00d448' },
 ]
 
 export default function PaymentSubmit() {
-  const { user }   = useAuth()
-  const navigate   = useNavigate()
-  const location   = useLocation()
-  const orderId    = location.state?.orderId || null
+  const { user }  = useAuth()
+  const navigate  = useNavigate()
+  const location  = useLocation()
+  const orderId   = location.state?.orderId || null
 
-  const [order,       setOrder]       = useState(null)
-  const [loading,     setLoading]     = useState(true)
-  const [method,      setMethod]      = useState('crypto') // crypto | giftcard
-  const [cryptoType,  setCryptoType]  = useState('btc')
-  const [giftType,    setGiftType]    = useState('apple')
-  const [txid,        setTxid]        = useState('')
-  const [cardCode,    setCardCode]    = useState('')
-  const [screenshot,  setScreenshot]  = useState(null)
-  const [preview,     setPreview]     = useState(null)
-  const [submitting,  setSubmitting]  = useState(false)
-  const [success,     setSuccess]     = useState(false)
-  const [error,       setError]       = useState('')
-  const [wallets,     setWallets]     = useState({})
+  const [order,      setOrder]      = useState(null)
+  const [loading,    setLoading]    = useState(true)
+  const [method,     setMethod]     = useState('crypto')
+  const [cryptoType, setCryptoType] = useState('btc')
+  const [giftType,   setGiftType]   = useState('apple')
+  const [txid,       setTxid]       = useState('')
+  const [cardCode,   setCardCode]   = useState('')
+  const [screenshot, setScreenshot] = useState(null)
+  const [preview,    setPreview]    = useState(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [success,    setSuccess]    = useState(false)
+  const [error,      setError]      = useState('')
+  const [wallets,    setWallets]    = useState({})
+  const [copied,     setCopied]     = useState(false)
 
   useEffect(() => {
     const load = async () => {
       try {
-        // Load site settings for wallet addresses
         const settingsSnap = await getDoc(doc(db, 'settings', 'site'))
         if (settingsSnap.exists()) {
           const d = settingsSnap.data()
@@ -59,8 +51,6 @@ export default function PaymentSubmit() {
             usdt: d.usdtAddress || 'TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE',
           })
         }
-
-        // Load order
         if (orderId) {
           const orderSnap = await getDoc(doc(db, 'orders', orderId))
           if (orderSnap.exists()) setOrder({ id: orderSnap.id, ...orderSnap.data() })
@@ -78,40 +68,63 @@ export default function PaymentSubmit() {
     setPreview(URL.createObjectURL(file))
   }
 
+  const handleCopy = (text) => {
+    try {
+      const el = document.createElement('textarea')
+      el.value = text
+      el.style.position = 'fixed'
+      el.style.left = '-9999px'
+      el.style.top = '-9999px'
+      document.body.appendChild(el)
+      el.focus()
+      el.select()
+      document.execCommand('copy')
+      document.body.removeChild(el)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      console.error('Copy failed', err)
+    }
+  }
+
+  const handleMethodChange = (newMethod) => {
+    setMethod(newMethod)
+    setError('')
+    setTxid('')
+    setCardCode('')
+  }
+
   const handleSubmit = async () => {
     setError('')
+
     if (method === 'crypto' && !txid.trim())
       return setError('Please enter your Transaction ID (TXID).')
-    if (method === 'giftcard' && !cardCode.trim())
-      return setError('Please enter your gift card code.')
+
     if (!screenshot)
       return setError('Please upload a screenshot as proof of payment.')
 
     setSubmitting(true)
     try {
-      // Upload screenshot
       const fileRef = ref(storage, `payments/${user.uid}/${Date.now()}_${screenshot.name}`)
       await uploadBytes(fileRef, screenshot)
       const screenshotURL = await getDownloadURL(fileRef)
 
-      // Create payment record
       const paymentData = {
-        userId:      user.uid,
-        userEmail:   user.email,
-        orderId:     orderId || null,
+        userId:       user.uid,
+        userEmail:    user.email,
+        orderId:      orderId || null,
         method,
-        amount:      order?.price || 0,
-        currency:    method === 'crypto' ? cryptoType.toUpperCase() : giftType,
+        amount:       order?.price || 0,
+        currency:     method === 'crypto' ? cryptoType.toUpperCase() : giftType,
         screenshotURL,
-        status:      'under_review',
-        createdAt:   serverTimestamp(),
+        status:       'under_review',
+        createdAt:    serverTimestamp(),
         ...(method === 'crypto'   ? { txid: txid.trim(), cryptoType } : {}),
         ...(method === 'giftcard' ? { cardCode: cardCode.trim(), giftCardType: giftType } : {}),
       }
 
       await addDoc(collection(db, 'payments'), paymentData)
 
-      // Update order status
       if (orderId) {
         await updateDoc(doc(db, 'orders', orderId), {
           status:        'under_review',
@@ -120,7 +133,6 @@ export default function PaymentSubmit() {
         })
       }
 
-      // Notify admin via notification
       await addDoc(collection(db, 'notifications'), {
         userId:    'admin',
         type:      'payment',
@@ -130,7 +142,6 @@ export default function PaymentSubmit() {
         createdAt: serverTimestamp(),
       })
 
-      // Notify user
       await addDoc(collection(db, 'notifications'), {
         userId:    user.uid,
         type:      'payment',
@@ -138,6 +149,14 @@ export default function PaymentSubmit() {
         message:   `Your payment of $${order?.price || 0} has been submitted and is under review.`,
         read:      false,
         createdAt: serverTimestamp(),
+      })
+
+      await sendPaymentReceivedEmail({
+        toEmail: user.email,
+        toName:  user.email.split('@')[0],
+        amount:  order?.price || 0,
+        tier:    order?.tier,
+        city:    order?.city,
       })
 
       setSuccess(true)
@@ -163,12 +182,9 @@ export default function PaymentSubmit() {
         <div style={{ width: '72px', height: '72px', borderRadius: '50%', background: '#22c55e20', border: '2px solid #22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '32px', margin: '0 auto 20px', boxShadow: '0 0 30px #22c55e44' }}>✓</div>
         <div style={{ color: '#fff', fontSize: '20px', fontWeight: 900, marginBottom: '8px' }}>Payment Submitted!</div>
         <div style={{ color: '#6b7280', fontSize: '13px', lineHeight: 1.6, marginBottom: '24px' }}>
-          Your payment is now under review. Our team will verify it within 1–24 hours. You'll receive a notification once approved.
+          Your payment is under review. Our team will verify it within 1–24 hours. You'll receive a notification once approved.
         </div>
-        <button
-          onClick={() => navigate('/transactions')}
-          style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', border: 'none', color: '#fff', borderRadius: '12px', padding: '13px 28px', cursor: 'pointer', fontWeight: 800, fontSize: '14px', width: '100%' }}
-        >
+        <button onClick={() => navigate('/transactions')} style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', border: 'none', color: '#fff', borderRadius: '12px', padding: '13px 28px', cursor: 'pointer', fontWeight: 800, fontSize: '14px', width: '100%' }}>
           View My Orders
         </button>
       </div>
@@ -206,14 +222,15 @@ export default function PaymentSubmit() {
           </div>
         )}
 
-        {/* Payment method toggle */}
+        {/* Method toggle */}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
           {[
-            { id: 'crypto',   label: '₿ Crypto',     },
-            { id: 'giftcard', label: '🎁 Gift Card',  },
+            { id: 'crypto',   label: '₿ Crypto' },
+            { id: 'giftcard', label: '🎁 Gift Card' },
           ].map(m => (
-            <button key={m.id} onClick={() => { setMethod(m.id); setError('') }} style={{
-              flex: 1, background: method === m.id ? '#6366f122' : '#ffffff08',
+            <button key={m.id} onClick={() => handleMethodChange(m.id)} style={{
+              flex: 1,
+              background: method === m.id ? '#6366f122' : '#ffffff08',
               border: `1px solid ${method === m.id ? '#6366f155' : '#ffffff12'}`,
               color: method === m.id ? '#818cf8' : '#9ca3af',
               borderRadius: '10px', padding: '11px',
@@ -222,19 +239,17 @@ export default function PaymentSubmit() {
           ))}
         </div>
 
-        {/* Crypto payment */}
+        {/* Crypto */}
         {method === 'crypto' && (
           <div style={{ background: 'linear-gradient(145deg,#13131f,#0d0d18)', border: '1px solid #ffffff0d', borderRadius: '16px', padding: '16px', marginBottom: '14px' }}>
-
-            {/* Crypto selector */}
             <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
               {CRYPTO_OPTIONS.map(c => (
                 <button key={c.id} onClick={() => setCryptoType(c.id)} style={{
                   flex: 1, background: cryptoType === c.id ? `${c.color}22` : '#ffffff08',
                   border: `1px solid ${cryptoType === c.id ? c.color + '55' : '#ffffff12'}`,
                   color: cryptoType === c.id ? c.color : '#9ca3af',
-                  borderRadius: '10px', padding: '10px 6px',
-                  cursor: 'pointer', fontWeight: cryptoType === c.id ? 700 : 400,
+                  borderRadius: '10px', padding: '10px 6px', cursor: 'pointer',
+                  fontWeight: cryptoType === c.id ? 700 : 400,
                   fontSize: '12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px',
                 }}>
                   <span style={{ fontSize: '18px' }}>{c.icon}</span>
@@ -243,7 +258,6 @@ export default function PaymentSubmit() {
               ))}
             </div>
 
-            {/* Wallet address */}
             <div style={{ marginBottom: '14px' }}>
               <div style={{ color: '#6b7280', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
                 Send {selectedCrypto?.symbol} to this address
@@ -253,38 +267,15 @@ export default function PaymentSubmit() {
                   {walletAddress}
                 </div>
                 <button
-                  onClick={() => {
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(walletAddress)
-      .then(() => alert('Address copied!'))
-      .catch(() => {
-        const el = document.createElement('textarea')
-        el.value = walletAddress
-        document.body.appendChild(el)
-        el.select()
-        document.execCommand('copy')
-        document.body.removeChild(el)
-        alert('Address copied!')
-      })
-  } else {
-    const el = document.createElement('textarea')
-    el.value = walletAddress
-    document.body.appendChild(el)
-    el.select()
-    document.execCommand('copy')
-    document.body.removeChild(el)
-    alert('Address copied!')
-  }
-}}
-                  style={{ background: `${selectedCrypto?.color}22`, border: `1px solid ${selectedCrypto?.color}44`, color: selectedCrypto?.color, borderRadius: '8px', padding: '6px 10px', cursor: 'pointer', fontSize: '11px', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}
+                  onClick={() => handleCopy(walletAddress)}
+                  style={{ background: copied ? '#22c55e22' : `${selectedCrypto?.color}22`, border: `1px solid ${copied ? '#22c55e55' : selectedCrypto?.color + '44'}`, color: copied ? '#4ade80' : selectedCrypto?.color, borderRadius: '8px', padding: '6px 10px', cursor: 'pointer', fontSize: '11px', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0, transition: 'all 0.2s' }}
                 >
-                  Copy
+                  {copied ? '✓ Copied' : 'Copy'}
                 </button>
               </div>
               <div style={{ color: '#4b5563', fontSize: '10px', marginTop: '5px' }}>Network: {selectedCrypto?.network}</div>
             </div>
 
-            {/* Amount */}
             {order && (
               <div style={{ background: `${selectedCrypto?.color}10`, border: `1px solid ${selectedCrypto?.color}33`, borderRadius: '10px', padding: '10px 12px', marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ color: '#9ca3af', fontSize: '12px' }}>Amount to send</span>
@@ -292,7 +283,6 @@ export default function PaymentSubmit() {
               </div>
             )}
 
-            {/* TXID */}
             <div>
               <label style={{ color: '#6b7280', fontSize: '10px', display: 'block', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 Transaction ID (TXID)
@@ -307,40 +297,38 @@ export default function PaymentSubmit() {
           </div>
         )}
 
-        {/* Gift card payment */}
+        {/* Gift card */}
         {method === 'giftcard' && (
           <div style={{ background: 'linear-gradient(145deg,#13131f,#0d0d18)', border: '1px solid #ffffff0d', borderRadius: '16px', padding: '16px', marginBottom: '14px' }}>
-
-            {/* Gift card selector */}
             <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
               {GIFT_CARD_OPTIONS.map(g => (
                 <button key={g.id} onClick={() => setGiftType(g.id)} style={{
                   flex: 1, background: giftType === g.id ? '#6366f122' : '#ffffff08',
                   border: `1px solid ${giftType === g.id ? '#6366f155' : '#ffffff12'}`,
                   color: giftType === g.id ? '#818cf8' : '#9ca3af',
-                  borderRadius: '10px', padding: '10px 6px',
-                  cursor: 'pointer', fontWeight: giftType === g.id ? 700 : 400,
+                  borderRadius: '10px', padding: '10px 6px', cursor: 'pointer',
+                  fontWeight: giftType === g.id ? 700 : 400,
                   fontSize: '11px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px',
                 }}>
                   <span style={{ fontSize: '18px' }}>{g.icon}</span>
-                  <span style={{ textAlign: 'center', lineHeight: 1.2 }}>{g.label.replace(' Gift Card','')}</span>
+                  <span style={{ textAlign: 'center', lineHeight: 1.2 }}>{g.label.replace(' Gift Card', '')}</span>
                 </button>
               ))}
             </div>
 
-            {/* Instructions */}
             <div style={{ background: '#6366f110', border: '1px solid #6366f133', borderRadius: '10px', padding: '10px 12px', marginBottom: '14px' }}>
               <div style={{ color: '#818cf8', fontWeight: 700, fontSize: '12px', marginBottom: '4px' }}>📋 Instructions</div>
               <div style={{ color: '#9ca3af', fontSize: '11px', lineHeight: 1.6 }}>
                 1. Purchase a gift card worth <strong style={{ color: '#fff' }}>${order?.price?.toLocaleString() || '—'} USD</strong><br />
-                2. Enter the card code below<br />
-                3. Upload a clear photo of the card
+                2. Upload a photo of the card <strong style={{ color: '#fff' }}>(required)</strong><br />
+                3. Enter the card code below <strong style={{ color: '#6b7280' }}>(optional)</strong>
               </div>
             </div>
 
-            {/* Card code */}
             <div style={{ marginBottom: '14px' }}>
-              <label style={{ color: '#6b7280', fontSize: '10px', display: 'block', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Gift Card Code</label>
+              <label style={{ color: '#6b7280', fontSize: '10px', display: 'block', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Gift Card Code <span style={{ color: '#374151' }}>(optional)</span>
+              </label>
               <input
                 value={cardCode} onChange={e => setCardCode(e.target.value)}
                 placeholder="XXXX-XXXX-XXXX-XXXX"
@@ -350,27 +338,22 @@ export default function PaymentSubmit() {
           </div>
         )}
 
-        {/* Screenshot upload */}
+        {/* Screenshot */}
         <div style={{ background: 'linear-gradient(145deg,#13131f,#0d0d18)', border: '1px solid #ffffff0d', borderRadius: '16px', padding: '16px', marginBottom: '16px' }}>
-          <div style={{ color: '#fff', fontSize: '13px', fontWeight: 700, marginBottom: '4px' }}>Payment Screenshot</div>
+          <div style={{ color: '#fff', fontSize: '13px', fontWeight: 700, marginBottom: '4px' }}>
+            Payment Screenshot <span style={{ color: '#ef4444', fontSize: '11px' }}>*required</span>
+          </div>
           <div style={{ color: '#4b5563', fontSize: '11px', marginBottom: '12px' }}>Upload a screenshot showing the completed payment</div>
 
           {preview ? (
             <div style={{ position: 'relative', marginBottom: '10px' }}>
               <img src={preview} alt="Payment proof" style={{ width: '100%', borderRadius: '10px', border: '1px solid #ffffff12', maxHeight: '200px', objectFit: 'cover' }} />
-              <button
-                onClick={() => { setScreenshot(null); setPreview(null) }}
-                style={{ position: 'absolute', top: '8px', right: '8px', background: '#ef4444', border: 'none', color: '#fff', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', fontSize: '11px', fontWeight: 700 }}
-              >
+              <button onClick={() => { setScreenshot(null); setPreview(null) }} style={{ position: 'absolute', top: '8px', right: '8px', background: '#ef4444', border: 'none', color: '#fff', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', fontSize: '11px', fontWeight: 700 }}>
                 Remove
               </button>
             </div>
           ) : (
-            <label style={{
-              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              background: '#ffffff06', border: '2px dashed #ffffff15', borderRadius: '12px',
-              padding: '28px', cursor: 'pointer', gap: '8px',
-            }}>
+            <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#ffffff06', border: '2px dashed #ffffff15', borderRadius: '12px', padding: '28px', cursor: 'pointer', gap: '8px' }}>
               <span style={{ fontSize: '28px' }}>📸</span>
               <span style={{ color: '#6b7280', fontSize: '12px', textAlign: 'center' }}>Tap to upload screenshot</span>
               <span style={{ color: '#374151', fontSize: '10px' }}>JPG, PNG supported</span>
@@ -392,9 +375,7 @@ export default function PaymentSubmit() {
           disabled={submitting}
           style={{
             width: '100%',
-            background: submitting
-              ? '#6366f150'
-              : 'linear-gradient(135deg,#6366f1,#8b5cf6)',
+            background: submitting ? '#6366f150' : 'linear-gradient(135deg,#6366f1,#8b5cf6)',
             border: 'none', color: '#fff', borderRadius: '12px',
             padding: '14px', cursor: submitting ? 'not-allowed' : 'pointer',
             fontWeight: 900, fontSize: '15px',
@@ -404,7 +385,7 @@ export default function PaymentSubmit() {
         </button>
 
         <div style={{ color: '#374151', fontSize: '11px', textAlign: 'center', marginTop: '10px', lineHeight: 1.5 }}>
-          Payment is reviewed within 1-24 hours. You'll receive a notification when approved.
+          Payment is reviewed within 1–24 hours. You'll receive a notification when approved.
         </div>
       </div>
     </div>
