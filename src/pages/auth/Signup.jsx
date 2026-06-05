@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
+import { doc, setDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore'
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../../firebase/config'
 
@@ -31,15 +32,25 @@ export default function Signup() {
 
       // Create user doc in Firestore
       await setDoc(doc(db, 'users', user.uid), {
-        uid: user.uid,
-        fullName,
-        email,
-        role: 'user',
-        walletBalance: 0,
-        createdAt: serverTimestamp(),
-      })
+  uid: user.uid,
+  fullName,
+  email,
+  role: 'user',
+  walletBalance: 0,
+  createdAt: serverTimestamp(),
+})
 
-      navigate('/dashboard')
+// Send welcome notification
+await addDoc(collection(db, 'notifications'), {
+  userId:    user.uid,
+  type:      'system',
+  title:     'Welcome to Infinity IP! 🎉',
+  message:   `Hello ${fullName}! Your account is ready. Browse the marketplace to get your first IP.`,
+  read:      false,
+  createdAt: serverTimestamp(),
+})
+
+navigate('/dashboard')
     } catch (err) {
       if (err.code === 'auth/email-already-in-use')
         setError('An account with this email already exists.')

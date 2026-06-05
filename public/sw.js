@@ -1,4 +1,4 @@
-const CACHE_NAME = 'infinityip-v3'
+const CACHE_NAME = 'infinityip-v4'
 
 // On install — skip waiting immediately
 self.addEventListener('install', event => {
