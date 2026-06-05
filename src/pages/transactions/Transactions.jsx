@@ -181,7 +181,7 @@ export default function Transactions() {
                         ))}
                       </div>
 
-                      {(order.status === 'pending' || order.status === 'under_review') && (
+                      {order.status === 'pending' && (
                         <div style={{ background: '#f59e0b10', border: '1px solid #f59e0b33', borderRadius: '10px', padding: '12px' }}>
                           <div style={{ color: '#fbbf24', fontWeight: 700, fontSize: '12px', marginBottom: '4px' }}>⚠️ Payment Required</div>
                           <div style={{ color: '#9ca3af', fontSize: '11px', lineHeight: 1.5 }}>
