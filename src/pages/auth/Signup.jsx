@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { doc, setDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore'
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../../firebase/config'
 
 export default function Signup() {
