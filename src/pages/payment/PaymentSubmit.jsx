@@ -212,7 +212,7 @@ export default function PaymentSubmit() {
             { id: 'crypto',   label: '₿ Crypto',     },
             { id: 'giftcard', label: '🎁 Gift Card',  },
           ].map(m => (
-            <button key={m.id} onClick={() => setMethod(m.id)} style={{
+            <button key={m.id} onClick={() => { setMethod(m.id); setError('') }} style={{
               flex: 1, background: method === m.id ? '#6366f122' : '#ffffff08',
               border: `1px solid ${method === m.id ? '#6366f155' : '#ffffff12'}`,
               color: method === m.id ? '#818cf8' : '#9ca3af',
@@ -253,7 +253,29 @@ export default function PaymentSubmit() {
                   {walletAddress}
                 </div>
                 <button
-                  onClick={() => navigator.clipboard.writeText(walletAddress)}
+                  onClick={() => {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(walletAddress)
+      .then(() => alert('Address copied!'))
+      .catch(() => {
+        const el = document.createElement('textarea')
+        el.value = walletAddress
+        document.body.appendChild(el)
+        el.select()
+        document.execCommand('copy')
+        document.body.removeChild(el)
+        alert('Address copied!')
+      })
+  } else {
+    const el = document.createElement('textarea')
+    el.value = walletAddress
+    document.body.appendChild(el)
+    el.select()
+    document.execCommand('copy')
+    document.body.removeChild(el)
+    alert('Address copied!')
+  }
+}}
                   style={{ background: `${selectedCrypto?.color}22`, border: `1px solid ${selectedCrypto?.color}44`, color: selectedCrypto?.color, borderRadius: '8px', padding: '6px 10px', cursor: 'pointer', fontSize: '11px', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}
                 >
                   Copy
