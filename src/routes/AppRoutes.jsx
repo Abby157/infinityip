@@ -49,7 +49,7 @@ export default function AppRoutes() {
       <Route path="/forgot-password" element={<GuestRoute><ForgotPassword /></GuestRoute>} />
 
       {/* ── Protected (logged in) ──────────────────────────────── */}
-      <Route element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
+        <Route element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/marketplace" element={<Marketplace />} />
         <Route path="/resources" element={<MyResources />} />
