@@ -5,6 +5,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../../firebase/config'
 import { showLocalNotification } from '../../services/pushNotifications'
+import { sendIPApprovedEmail, sendIPRejectedEmail } from '../../services/emailService'
 
 const STATUS_COLOR = {
   pending:      { color: '#f59e0b', bg: '#f59e0b18', label: 'Pending' },
@@ -122,6 +123,14 @@ export default function PaymentReviews() {
         read:      false,
         createdAt: serverTimestamp(),
       })
+
+      await sendIPRejectedEmail({
+        toEmail: order.userEmail,
+        toName:  order.userEmail.split('@')[0],
+        city:    order.city,
+        country: order.country,
+        reason:  rejectReason.trim(),
+     })
 
       setOrders(prev => prev.map(o => o.id === order.id
         ? { ...o, status: 'rejected', paymentStatus: 'failed', rejectionReason: rejectReason.trim() }
