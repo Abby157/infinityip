@@ -404,7 +404,7 @@ export default function PaymentSubmit() {
         </button>
 
         <div style={{ color: '#374151', fontSize: '11px', textAlign: 'center', marginTop: '10px', lineHeight: 1.5 }}>
-          Payment is reviewed within 1–24 hours. You'll receive a notification when approved.
+          Payment is reviewed within 1-24 hours. You'll receive a notification when approved.
         </div>
       </div>
     </div>
