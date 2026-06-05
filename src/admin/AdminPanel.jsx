@@ -7,10 +7,12 @@ import Orders from './orders/Orders'
 import Users from './users/Users'
 import SupportTickets from './support/SupportTickets'
 import SiteSettings from './settings/SiteSettings'
+import PaymentHistory from './payments/PaymentHistory'
 
 const NAV = [
   { id: 'dashboard', label: 'Dashboard',  icon: '⊞' },
   { id: 'payments',  label: 'Payments',   icon: '💳' },
+  { id: 'history',   label: 'Pay History',icon: '🧾' },
   { id: 'orders',    label: 'Orders',     icon: '📦' },
   { id: 'users',     label: 'Users',      icon: '👥' },
   { id: 'tickets',   label: 'Tickets',    icon: '💬' },
@@ -31,6 +33,7 @@ export default function AdminPanel() {
     switch (active) {
       case 'dashboard': return <AdminDashboard />
       case 'payments':  return <PaymentReviews />
+      case 'history':   return <PaymentHistory />
       case 'orders':    return <Orders />
       case 'users':     return <Users />
       case 'tickets':   return <SupportTickets />
