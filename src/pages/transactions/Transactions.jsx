@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
-import { collection, query, where, orderBy, getDocs } from 'firebase/firestore'
+import { collection, query, where, orderBy, getDocs, doc, updateDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../../firebase/config'
 
 const STATUS_CONFIG = {
@@ -10,6 +10,7 @@ const STATUS_CONFIG = {
   active:       { label: 'Active',          color: '#22c55e', bg: '#22c55e18' },
   rejected:     { label: 'Rejected',        color: '#ef4444', bg: '#ef444418' },
   expired:      { label: 'Expired',         color: '#6b7280', bg: '#6b728018' },
+  cancelled:    { label: 'Cancelled',       color: '#ef4444', bg: '#ef444418' },
 }
 
 const TIER_COLORS = {
@@ -22,12 +23,13 @@ const TIER_COLORS = {
 const FLAG = code => `https://flagcdn.com/20x15/${code?.toLowerCase()}.png`
 
 export default function Transactions() {
-  const { user } = useAuth()
-  const navigate = useNavigate()
+  const { user }   = useAuth()
+  const navigate   = useNavigate()
   const [orders,   setOrders]   = useState([])
   const [loading,  setLoading]  = useState(true)
   const [filter,   setFilter]   = useState('all')
   const [selected, setSelected] = useState(null)
+  const [cancelling, setCancelling] = useState(null)
 
   useEffect(() => {
     if (!user) return
@@ -45,6 +47,22 @@ export default function Transactions() {
     }
     load()
   }, [user])
+
+  const handleCancel = async (order) => {
+    if (!window.confirm('Are you sure you want to cancel this order?')) return
+    setCancelling(order.id)
+    try {
+      await updateDoc(doc(db, 'orders', order.id), {
+        status: 'cancelled',
+        updatedAt: serverTimestamp(),
+      })
+      setOrders(prev => prev.map(o =>
+        o.id === order.id ? { ...o, status: 'cancelled' } : o
+      ))
+      setSelected(null)
+    } catch (err) { console.error(err) }
+    setCancelling(null)
+  }
 
   const tabs = [
     { id: 'all',          label: 'All' },
@@ -124,10 +142,8 @@ export default function Transactions() {
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      {/* Icon */}
                       <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: `${tier.color}18`, border: `1px solid ${tier.color}33`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', flexShrink: 0 }}>📡</div>
 
-                      {/* Info */}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '2px' }}>
                           <img src={FLAG(order.countryCode)} alt="" style={{ borderRadius: '2px', flexShrink: 0 }} onError={e => { e.target.style.display = 'none' }} />
@@ -139,7 +155,6 @@ export default function Transactions() {
                         </div>
                       </div>
 
-                      {/* Right */}
                       <div style={{ textAlign: 'right', flexShrink: 0 }}>
                         <div style={{ color: '#fff', fontWeight: 800, fontSize: '15px' }}>${order.price?.toLocaleString()}</div>
                         <div style={{ background: status.bg, border: `1px solid ${status.color}44`, borderRadius: '20px', padding: '2px 8px', color: status.color, fontSize: '9px', fontWeight: 700, marginTop: '4px', whiteSpace: 'nowrap' }}>
@@ -158,12 +173,12 @@ export default function Transactions() {
                       {/* Detail grid */}
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
                         {[
-                          { label: 'Order ID',       value: order.id.slice(0,10)+'…' },
-                          { label: 'Date',           value: date },
-                          { label: 'IP Type',        value: order.ipType },
-                          { label: 'Payment',        value: order.paymentStatus || 'Unpaid' },
-                          { label: 'IP Address',     value: order.ipAddress || 'Not assigned' },
-                          { label: 'Region',         value: order.region },
+                          { label: 'Order ID',   value: order.id.slice(0,10)+'…' },
+                          { label: 'Date',       value: date },
+                          { label: 'IP Type',    value: order.ipType },
+                          { label: 'Payment',    value: order.paymentStatus || 'Unpaid' },
+                          { label: 'IP Address', value: order.ipAddress || 'Not assigned' },
+                          { label: 'Region',     value: order.region },
                         ].map(s => (
                           <div key={s.label} style={{ background: '#ffffff05', border: '1px solid #ffffff08', borderRadius: '8px', padding: '8px 10px' }}>
                             <div style={{ color: '#6b7280', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{s.label}</div>
@@ -172,9 +187,9 @@ export default function Transactions() {
                         ))}
                       </div>
 
-                      {/* Status banners */}
+                      {/* Pending banner */}
                       {order.status === 'pending' && (
-                        <div style={{ background: '#f59e0b10', border: '1px solid #f59e0b33', borderRadius: '10px', padding: '12px' }}>
+                        <div style={{ background: '#f59e0b10', border: '1px solid #f59e0b33', borderRadius: '10px', padding: '12px', marginBottom: '10px' }}>
                           <div style={{ color: '#fbbf24', fontWeight: 700, fontSize: '12px', marginBottom: '4px' }}>⚠️ Payment Required</div>
                           <div style={{ color: '#9ca3af', fontSize: '11px', lineHeight: 1.5 }}>
                             Submit your payment proof to activate this IP. We accept BTC, ETH, USDT and Gift Cards.
@@ -183,14 +198,22 @@ export default function Transactions() {
                             Amount: ${order.price?.toLocaleString()}
                           </div>
                           <button
-                          onClick={() => navigate('/payment', { state: { orderId: order.id } })}
-                          style={{ display: 'block', marginTop: '10px', background: 'linear-gradient(135deg,#f59e0b,#d97706)', border: 'none', color: '#000', borderRadius: '8px', padding: '10px 16px', cursor: 'pointer', fontWeight: 800, fontSize: '13px', width: '100%' }}
+                            onClick={(e) => { e.stopPropagation(); navigate('/payment', { state: { orderId: order.id } }) }}
+                            style={{ display: 'block', marginTop: '10px', background: 'linear-gradient(135deg,#f59e0b,#d97706)', border: 'none', color: '#000', borderRadius: '8px', padding: '10px 16px', cursor: 'pointer', fontWeight: 800, fontSize: '13px', width: '100%' }}
                           >
-                         Submit Payment →
-                        </button>
+                            Submit Payment →
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleCancel(order) }}
+                            disabled={cancelling === order.id}
+                            style={{ display: 'block', marginTop: '8px', background: '#ef444415', border: '1px solid #ef444433', color: '#f87171', borderRadius: '8px', padding: '10px 16px', cursor: cancelling === order.id ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '13px', width: '100%' }}
+                          >
+                            {cancelling === order.id ? 'Cancelling…' : '✕ Cancel Order'}
+                          </button>
                         </div>
                       )}
 
+                      {/* Under review banner */}
                       {order.status === 'under_review' && (
                         <div style={{ background: '#6366f110', border: '1px solid #6366f133', borderRadius: '10px', padding: '12px' }}>
                           <div style={{ color: '#818cf8', fontWeight: 700, fontSize: '12px', marginBottom: '4px' }}>🔍 Payment Under Review</div>
@@ -200,6 +223,7 @@ export default function Transactions() {
                         </div>
                       )}
 
+                      {/* Active banner */}
                       {order.status === 'active' && order.ipAddress && (
                         <div style={{ background: '#22c55e10', border: '1px solid #22c55e33', borderRadius: '10px', padding: '12px' }}>
                           <div style={{ color: '#4ade80', fontWeight: 700, fontSize: '12px', marginBottom: '6px' }}>✅ IP Active</div>
@@ -209,6 +233,7 @@ export default function Transactions() {
                         </div>
                       )}
 
+                      {/* Rejected banner */}
                       {order.status === 'rejected' && (
                         <div style={{ background: '#ef444410', border: '1px solid #ef444433', borderRadius: '10px', padding: '12px' }}>
                           <div style={{ color: '#f87171', fontWeight: 700, fontSize: '12px', marginBottom: '4px' }}>❌ Order Rejected</div>
@@ -217,6 +242,17 @@ export default function Transactions() {
                           </div>
                         </div>
                       )}
+
+                      {/* Cancelled banner */}
+                      {order.status === 'cancelled' && (
+                        <div style={{ background: '#ef444410', border: '1px solid #ef444433', borderRadius: '10px', padding: '12px' }}>
+                          <div style={{ color: '#f87171', fontWeight: 700, fontSize: '12px', marginBottom: '4px' }}>✕ Order Cancelled</div>
+                          <div style={{ color: '#9ca3af', fontSize: '11px', lineHeight: 1.5 }}>
+                            This order has been cancelled. Place a new order from the marketplace.
+                          </div>
+                        </div>
+                      )}
+
                     </div>
                   )}
                 </div>
