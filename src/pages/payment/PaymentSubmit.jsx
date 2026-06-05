@@ -97,8 +97,6 @@ export default function PaymentSubmit() {
   const handleSubmit = async () => {
     setError('')
 
-    if (method === 'crypto' && !txid.trim())
-      return setError('Please enter your Transaction ID (TXID).')
 
     if (!screenshot)
       return setError('Please upload a screenshot as proof of payment.')
