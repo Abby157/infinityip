@@ -25,10 +25,10 @@ const FLAG = code => `https://flagcdn.com/20x15/${code?.toLowerCase()}.png`
 export default function Transactions() {
   const { user }   = useAuth()
   const navigate   = useNavigate()
-  const [orders,   setOrders]   = useState([])
-  const [loading,  setLoading]  = useState(true)
-  const [filter,   setFilter]   = useState('all')
-  const [selected, setSelected] = useState(null)
+  const [orders,     setOrders]     = useState([])
+  const [loading,    setLoading]    = useState(true)
+  const [filter,     setFilter]     = useState('all')
+  const [selected,   setSelected]   = useState(null)
   const [cancelling, setCancelling] = useState(null)
 
   useEffect(() => {
@@ -49,7 +49,7 @@ export default function Transactions() {
   }, [user])
 
   const handleCancel = async (order) => {
-    if (!window.confirm('Are you sure you want to cancel this order?')) return
+    if (!window.confirm('Cancel this order?')) return
     setCancelling(order.id)
     try {
       await updateDoc(doc(db, 'orders', order.id), {
@@ -77,12 +77,10 @@ export default function Transactions() {
   return (
     <div style={{ minHeight: '100vh', background: '#080810', color: '#fff', fontFamily: "'Inter','Segoe UI',sans-serif" }}>
 
-      {/* Header */}
       <div style={{ padding: '14px 16px 0', background: 'linear-gradient(180deg,#0d0d20,#080810)', borderBottom: '1px solid #ffffff08' }}>
         <div style={{ color: '#4b5563', fontSize: '11px', marginBottom: '6px' }}>Transactions</div>
         <h1 style={{ color: '#fff', fontSize: '20px', fontWeight: 900, margin: '0 0 14px', letterSpacing: '-0.5px' }}>My Orders</h1>
 
-        {/* Tabs */}
         <div style={{ display: 'flex', gap: '0', overflowX: 'auto' }}>
           {tabs.map(tab => {
             const count  = tab.id === 'all' ? orders.length : orders.filter(o => o.status === tab.id).length
@@ -109,7 +107,6 @@ export default function Transactions() {
         </div>
       </div>
 
-      {/* Content */}
       <div style={{ padding: '14px 16px' }}>
         {loading ? (
           <div style={{ textAlign: 'center', padding: '50px', color: '#4b5563' }}>Loading…</div>
@@ -124,14 +121,13 @@ export default function Transactions() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {filtered.map(order => {
-              const status  = STATUS_CONFIG[order.status] || STATUS_CONFIG.pending
-              const tier    = TIER_COLORS[order.tier]    || TIER_COLORS.standard
-              const date    = order.createdAt?.toDate?.()?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) || '—'
-              const isOpen  = selected === order.id
+              const status = STATUS_CONFIG[order.status] || STATUS_CONFIG.pending
+              const tier   = TIER_COLORS[order.tier]    || TIER_COLORS.standard
+              const date   = order.createdAt?.toDate?.()?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) || '—'
+              const isOpen = selected === order.id
 
               return (
                 <div key={order.id}>
-                  {/* Order card */}
                   <div
                     onClick={() => setSelected(isOpen ? null : order.id)}
                     style={{
@@ -166,11 +162,9 @@ export default function Transactions() {
                     </div>
                   </div>
 
-                  {/* Expanded detail */}
                   {isOpen && (
                     <div style={{ background: '#0d0d18', border: `1px solid ${tier.color}33`, borderTop: 'none', borderRadius: '0 0 14px 14px', padding: '14px' }}>
 
-                      {/* Detail grid */}
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
                         {[
                           { label: 'Order ID',   value: order.id.slice(0,10)+'…' },
@@ -187,9 +181,8 @@ export default function Transactions() {
                         ))}
                       </div>
 
-                      {/* Pending banner */}
                       {order.status === 'pending' && (
-                        <div style={{ background: '#f59e0b10', border: '1px solid #f59e0b33', borderRadius: '10px', padding: '12px', marginBottom: '10px' }}>
+                        <div style={{ background: '#f59e0b10', border: '1px solid #f59e0b33', borderRadius: '10px', padding: '12px' }}>
                           <div style={{ color: '#fbbf24', fontWeight: 700, fontSize: '12px', marginBottom: '4px' }}>⚠️ Payment Required</div>
                           <div style={{ color: '#9ca3af', fontSize: '11px', lineHeight: 1.5 }}>
                             Submit your payment proof to activate this IP. We accept BTC, ETH, USDT and Gift Cards.
@@ -198,13 +191,13 @@ export default function Transactions() {
                             Amount: ${order.price?.toLocaleString()}
                           </div>
                           <button
-                            onClick={(e) => { e.stopPropagation(); navigate('/payment', { state: { orderId: order.id } }) }}
+                            onClick={e => { e.stopPropagation(); navigate('/payment', { state: { orderId: order.id } }) }}
                             style={{ display: 'block', marginTop: '10px', background: 'linear-gradient(135deg,#f59e0b,#d97706)', border: 'none', color: '#000', borderRadius: '8px', padding: '10px 16px', cursor: 'pointer', fontWeight: 800, fontSize: '13px', width: '100%' }}
                           >
                             Submit Payment →
                           </button>
                           <button
-                            onClick={(e) => { e.stopPropagation(); handleCancel(order) }}
+                            onClick={e => { e.stopPropagation(); handleCancel(order) }}
                             disabled={cancelling === order.id}
                             style={{ display: 'block', marginTop: '8px', background: '#ef444415', border: '1px solid #ef444433', color: '#f87171', borderRadius: '8px', padding: '10px 16px', cursor: cancelling === order.id ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '13px', width: '100%' }}
                           >
@@ -213,7 +206,6 @@ export default function Transactions() {
                         </div>
                       )}
 
-                      {/* Under review banner */}
                       {order.status === 'under_review' && (
                         <div style={{ background: '#6366f110', border: '1px solid #6366f133', borderRadius: '10px', padding: '12px' }}>
                           <div style={{ color: '#818cf8', fontWeight: 700, fontSize: '12px', marginBottom: '4px' }}>🔍 Payment Under Review</div>
@@ -223,7 +215,6 @@ export default function Transactions() {
                         </div>
                       )}
 
-                      {/* Active banner */}
                       {order.status === 'active' && order.ipAddress && (
                         <div style={{ background: '#22c55e10', border: '1px solid #22c55e33', borderRadius: '10px', padding: '12px' }}>
                           <div style={{ color: '#4ade80', fontWeight: 700, fontSize: '12px', marginBottom: '6px' }}>✅ IP Active</div>
@@ -233,7 +224,6 @@ export default function Transactions() {
                         </div>
                       )}
 
-                      {/* Rejected banner */}
                       {order.status === 'rejected' && (
                         <div style={{ background: '#ef444410', border: '1px solid #ef444433', borderRadius: '10px', padding: '12px' }}>
                           <div style={{ color: '#f87171', fontWeight: 700, fontSize: '12px', marginBottom: '4px' }}>❌ Order Rejected</div>
@@ -243,7 +233,6 @@ export default function Transactions() {
                         </div>
                       )}
 
-                      {/* Cancelled banner */}
                       {order.status === 'cancelled' && (
                         <div style={{ background: '#ef444410', border: '1px solid #ef444433', borderRadius: '10px', padding: '12px' }}>
                           <div style={{ color: '#f87171', fontWeight: 700, fontSize: '12px', marginBottom: '4px' }}>✕ Order Cancelled</div>
@@ -262,8 +251,5 @@ export default function Transactions() {
         )}
       </div>
     </div>
-  )
-}// Fri Jun  5 03:01:18 WAT 2026
-)
   )
 }
