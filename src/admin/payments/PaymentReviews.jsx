@@ -63,12 +63,17 @@ export default function PaymentReviews() {
     setActing(true)
     try {
       const ip = generateIP()
-      await updateDoc(doc(db, 'orders', order.id), {
-        status:        'active',
-        paymentStatus: 'paid',
-        ipAddress:     ip,
-        approvedAt:    serverTimestamp(),
-      })
+      const expiryDate = new Date()
+expiryDate.setDate(expiryDate.getDate() + 30)
+
+await updateDoc(doc(db, 'orders', order.id), {
+  status:        'active',
+  paymentStatus: 'paid',
+  ipAddress:     ip,
+  approvedAt:    serverTimestamp(),
+  expiryDate:    expiryDate,
+  renewalStatus: 'active',
+})
       // Notify user
       await addDoc(collection(db, 'notifications'), {
         userId:    order.userId,
