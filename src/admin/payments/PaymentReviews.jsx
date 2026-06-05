@@ -4,6 +4,7 @@ import {
   doc, updateDoc, addDoc, serverTimestamp
 } from 'firebase/firestore'
 import { db } from '../../firebase/config'
+import { showLocalNotification } from '../../services/pushNotifications'
 
 const STATUS_COLOR = {
   pending:      { color: '#f59e0b', bg: '#f59e0b18', label: 'Pending' },

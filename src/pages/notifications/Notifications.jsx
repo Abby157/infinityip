@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { collection, query, where, orderBy, getDocs, updateDoc, doc } from 'firebase/firestore'
 import { db } from '../../firebase/config'
+import { requestPushPermission, isPushSupported, getPushPermissionStatus, showLocalNotification } from '../../services/pushNotifications'
 
 const TYPE_CONFIG = {
   order:   { icon: '📦', color: '#6366f1', bg: '#6366f118' },
@@ -14,8 +15,9 @@ const TYPE_CONFIG = {
 export default function Notifications() {
   const { user } = useAuth()
   const [notifications, setNotifications] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [filter,  setFilter]  = useState('all')
+  const [loading,    setLoading]    = useState(true)
+  const [filter,     setFilter]     = useState('all')
+  const [pushStatus, setPushStatus] = useState(getPushPermissionStatus())
 
   useEffect(() => {
     if (!user) return
@@ -69,6 +71,7 @@ export default function Notifications() {
       {/* Header */}
       <div style={{ padding: '14px 16px 0', background: 'linear-gradient(180deg,#0d0d20,#080810)', borderBottom: '1px solid #ffffff08' }}>
         <div style={{ color: '#4b5563', fontSize: '11px', marginBottom: '6px' }}>Notifications</div>
+
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
           <h1 style={{ color: '#fff', fontSize: '20px', fontWeight: 900, margin: 0, letterSpacing: '-0.5px' }}>
             Notifications
@@ -78,11 +81,33 @@ export default function Notifications() {
               </span>
             )}
           </h1>
-          {unreadCount > 0 && (
-            <button onClick={markAllRead} style={{ background: '#6366f115', border: '1px solid #6366f133', color: '#818cf8', borderRadius: '8px', padding: '6px 12px', cursor: 'pointer', fontWeight: 600, fontSize: '11px', whiteSpace: 'nowrap' }}>
-              Mark all read
-            </button>
-          )}
+
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+            {isPushSupported() && pushStatus !== 'granted' && (
+              <button
+                onClick={async () => {
+                  const sub = await requestPushPermission()
+                  if (sub) {
+                    setPushStatus('granted')
+                    showLocalNotification('Notifications Enabled! 🔔', 'You will now receive alerts from Infinity IP')
+                  }
+                }}
+                style={{ background: '#6366f115', border: '1px solid #6366f133', color: '#818cf8', borderRadius: '8px', padding: '6px 12px', cursor: 'pointer', fontWeight: 600, fontSize: '11px', whiteSpace: 'nowrap' }}
+              >
+                🔔 Enable Alerts
+              </button>
+            )}
+            {pushStatus === 'granted' && (
+              <div style={{ background: '#22c55e15', border: '1px solid #22c55e33', borderRadius: '8px', padding: '6px 12px', color: '#4ade80', fontSize: '11px', fontWeight: 600 }}>
+                ✅ Alerts on
+              </div>
+            )}
+            {unreadCount > 0 && (
+              <button onClick={markAllRead} style={{ background: '#6366f115', border: '1px solid #6366f133', color: '#818cf8', borderRadius: '8px', padding: '6px 12px', cursor: 'pointer', fontWeight: 600, fontSize: '11px', whiteSpace: 'nowrap' }}>
+                Mark all read
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Tabs */}
