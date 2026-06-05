@@ -17,6 +17,7 @@ import Profile from '../pages/profile/Profile'
 import AdminPanel from '../admin/AdminPanel'
 import PaymentSubmit from '../pages/payment/PaymentSubmit'
 import RenewIP from '../pages/resources/RenewIP'
+import Landing from '../pages/landing/Landing'
 
 function ProtectedRoute({ children }) {
   const { user } = useAuth()
@@ -42,6 +43,7 @@ export default function AppRoutes() {
     <Routes>
 
       {/* ── Guest only ─────────────────────────────────────────── */}
+      <Route path="/" element={<GuestRoute><Landing /></GuestRoute>} />
       <Route path="/login" element={<GuestRoute><Login /></GuestRoute>} />
       <Route path="/signup" element={<GuestRoute><Signup /></GuestRoute>} />
       <Route path="/forgot-password" element={<GuestRoute><ForgotPassword /></GuestRoute>} />
