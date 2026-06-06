@@ -1,14 +1,19 @@
 import emailjs from '@emailjs/browser'
 
+emailjs.init('t8kS5uait_n1Z8x-i')
+
 const SERVICE_ID  = 'service_hlb446o'
 const PUBLIC_KEY  = 't8kS5uait_n1Z8x-i'
-
-// Template IDs — we'll use one universal template
 const TEMPLATE_ID = 'template_qyd1v3c'
 
 const send = async (params) => {
-  const result = await emailjs.send(SERVICE_ID, TEMPLATE_ID, params, PUBLIC_KEY)
-  return result
+  try {
+    const result = await emailjs.send(SERVICE_ID, TEMPLATE_ID, params, PUBLIC_KEY)
+    return result
+  } catch (err) {
+    console.error('EmailJS error:', err)
+    throw err
+  }
 }
 
 // Payment received — user submitted payment
