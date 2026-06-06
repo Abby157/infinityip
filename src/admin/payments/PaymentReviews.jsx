@@ -90,15 +90,21 @@ export default function PaymentReviews() {
       createdAt: serverTimestamp(),
     })
 
-    await sendIPApprovedEmail({
-      toEmail:    order.userEmail,
-      toName:     order.userEmail.split('@')[0],
-      ipAddress:  ip,
-      city:       order.city,
-      country:    order.country,
-      tier:       order.tier,
-      expiryDate: expiryDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-    })
+    const emailSent = await sendIPApprovedEmail({
+  toEmail: order.userEmail,
+  toName: order.userEmail.split('@')[0],
+  ipAddress: ip,
+  city: order.city,
+  country: order.country,
+  tier: order.tier,
+  expiryDate: expiryDate.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }),
+})
+
+console.log('EMAIL RESULT:', emailSent)
 
     setOrders(prev => prev.map(o => o.id === order.id
       ? { ...o, status: 'active', paymentStatus: 'paid', ipAddress: ip, expiryDate }
