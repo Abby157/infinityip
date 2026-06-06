@@ -64,44 +64,54 @@ export default function PaymentReviews() {
   }
 
   const approve = async (order) => {
-    setActing(true)
-    try {
-      const ip = generateIP()
-      const expiryDate = new Date()
-      expiryDate.setDate(expiryDate.getDate() + 30)
+  setActing(true)
+  try {
+    const ip = generateIP()
+    const expiryDate = new Date()
+    expiryDate.setDate(expiryDate.getDate() + 30)
 
-      await updateDoc(doc(db, 'orders', order.id), {
-        status:          'active',
-        paymentStatus:   'paid',
-        ipAddress:       ip,
-        approvedAt:      serverTimestamp(),
-        expiryDate:      expiryDate,
-        expiryAlertSent: false,
-        renewalStatus:   'active',
-        updatedAt:       serverTimestamp(),
-      })
+    await updateDoc(doc(db, 'orders', order.id), {
+      status:          'active',
+      paymentStatus:   'paid',
+      ipAddress:       ip,
+      approvedAt:      serverTimestamp(),
+      expiryDate:      expiryDate,
+      expiryAlertSent: false,
+      renewalStatus:   'active',
+      updatedAt:       serverTimestamp(),
+    })
 
-      await addDoc(collection(db, 'notifications'), {
-        userId:    order.userId,
-        type:      'payment',
-        title:     'Payment Approved ✅',
-        message:   `Your ${order.tier?.toUpperCase()} IP in ${order.city} has been activated. IP: ${ip}. Expires: ${expiryDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`,
-        read:      false,
-        createdAt: serverTimestamp(),
-      })
+    await addDoc(collection(db, 'notifications'), {
+      userId:    order.userId,
+      type:      'payment',
+      title:     'Payment Approved ✅',
+      message:   `Your ${order.tier?.toUpperCase()} IP in ${order.city} has been activated. IP: ${ip}. Expires: ${expiryDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`,
+      read:      false,
+      createdAt: serverTimestamp(),
+    })
 
-      setOrders(prev => prev.map(o => o.id === order.id
-        ? { ...o, status: 'active', paymentStatus: 'paid', ipAddress: ip, expiryDate }
-        : o
-      ))
-      setSelected(null)
-      showToast(`✅ Approved! IP ${ip} assigned to ${order.userEmail}`)
-    } catch (err) {
-      console.error(err)
-      showToast('❌ Error approving order')
-    }
-    setActing(false)
+    await sendIPApprovedEmail({
+      toEmail:    order.userEmail,
+      toName:     order.userEmail.split('@')[0],
+      ipAddress:  ip,
+      city:       order.city,
+      country:    order.country,
+      tier:       order.tier,
+      expiryDate: expiryDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+    })
+
+    setOrders(prev => prev.map(o => o.id === order.id
+      ? { ...o, status: 'active', paymentStatus: 'paid', ipAddress: ip, expiryDate }
+      : o
+    ))
+    setSelected(null)
+    showToast(`✅ Approved! IP ${ip} assigned to ${order.userEmail}`)
+  } catch (err) {
+    console.error(err)
+    showToast('❌ Error approving order')
   }
+  setActing(false)
+}
 
   const reject = async (order) => {
     if (!rejectReason.trim()) return
