@@ -7,13 +7,8 @@ const PUBLIC_KEY  = 't8kS5uait_n1Z8x-i'
 const TEMPLATE_ID = 'template_qyd1v3c'
 
 const send = async (params) => {
-  try {
-    await emailjs.send(SERVICE_ID, TEMPLATE_ID, params, PUBLIC_KEY)
-    return true
-  } catch (err) {
-    console.error('EmailJS error:', err)
-    return false
-  }
+  const result = await emailjs.send(SERVICE_ID, TEMPLATE_ID, params, PUBLIC_KEY)
+  return result
 }
 
 // Payment received — user submitted payment
