@@ -294,9 +294,9 @@ export default function MyResources() {
                       <div style={{ color: '#4b5563', fontSize: '11px' }}>Purchased {date}</div>
                       <div style={{ color: '#fff', fontSize: '14px', fontWeight: 800 }}>${ip.price?.toLocaleString()}/mo</div>
                     </div>
-                    {ip.status === 'active' && (
-                      <button
-                        onClick={() => navigate('/renew', { state: { orderId: ip.id } })}
+                   {ip.status === 'active' && daysLeft !== null && daysLeft <= 7 && (
+                     <button
+                       onClick={() => navigate('/renew', { state: { orderId: ip.id } })}
                         style={{ width: '100%', marginTop: '10px', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', border: 'none', color: '#fff', borderRadius: '8px', padding: '9px', cursor: 'pointer', fontWeight: 700, fontSize: '13px' }}
                       >
                         🔄 Renew IP — ${ip.price?.toLocaleString()}/mo
