@@ -8,8 +8,21 @@ const TEMPLATE_ID = 'template_qyd1v3c'
 
 const send = async (params) => {
   try {
-    const result = await emailjs.send(SERVICE_ID, TEMPLATE_ID, params, PUBLIC_KEY)
-    return result
+    const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        service_id:  SERVICE_ID,
+        template_id: TEMPLATE_ID,
+        user_id:     PUBLIC_KEY,
+        template_params: params,
+      }),
+    })
+    if (!response.ok) {
+      const text = await response.text()
+      throw new Error(text)
+    }
+    return true
   } catch (err) {
     console.error('EmailJS error:', err)
     throw err
