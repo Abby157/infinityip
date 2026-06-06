@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { collection, getDocs, query, orderBy, doc, updateDoc, serverTimestamp, addDoc } from 'firebase/firestore'
 import { db } from '../../firebase/config'
+import { sendIPApprovedEmail, sendIPRejectedEmail } from '../../services/emailService'
 
 const STATUS_CONFIG = {
   under_review: { label: 'Under Review', color: '#6366f1', bg: '#6366f118' },
@@ -52,14 +53,13 @@ export default function PaymentHistory() {
       const ip = generateIP()
       const expiryDate = new Date()
       expiryDate.setDate(expiryDate.getDate() + 30)
+      const expiryStr = expiryDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 
-      // Update payment status
       await updateDoc(doc(db, 'payments', payment.id), {
         status:     'approved',
         approvedAt: serverTimestamp(),
       })
 
-      // Update order with ALL fields
       if (payment.orderId) {
         await updateDoc(doc(db, 'orders', payment.orderId), {
           status:          'active',
@@ -73,14 +73,23 @@ export default function PaymentHistory() {
         })
       }
 
-      // Notify user
       await addDoc(collection(db, 'notifications'), {
         userId:    payment.userId,
         type:      'payment',
         title:     'Payment Approved ✅',
-        message:   `Your payment of $${payment.amount} has been approved. Your IP ${ip} is now active and expires on ${expiryDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}.`,
+        message:   `Your payment of $${payment.amount} has been approved. Your IP ${ip} is now active and expires on ${expiryStr}.`,
         read:      false,
         createdAt: serverTimestamp(),
+      })
+
+      await sendIPApprovedEmail({
+        toEmail:    payment.userEmail,
+        toName:     payment.userEmail?.split('@')[0],
+        ipAddress:  ip,
+        city:       payment.city    || '',
+        country:    payment.country || '',
+        tier:       payment.tier    || '',
+        expiryDate: expiryStr,
       })
 
       setPayments(prev => prev.map(p => p.id === payment.id ? { ...p, status: 'approved' } : p))
@@ -117,6 +126,14 @@ export default function PaymentHistory() {
         createdAt: serverTimestamp(),
       })
 
+      await sendIPRejectedEmail({
+        toEmail: payment.userEmail,
+        toName:  payment.userEmail?.split('@')[0],
+        city:    payment.city    || '',
+        country: payment.country || '',
+        reason:  'Payment could not be verified.',
+      })
+
       setPayments(prev => prev.map(p => p.id === payment.id ? { ...p, status: 'rejected' } : p))
       setSelected(null)
       showToast('❌ Payment rejected')
@@ -134,14 +151,12 @@ export default function PaymentHistory() {
   return (
     <div style={{ padding: '14px 16px' }}>
 
-      {/* Toast */}
       {toast && (
         <div style={{ background: '#13131f', border: '1px solid #ffffff15', borderRadius: '10px', padding: '10px 16px', marginBottom: '14px', color: '#fff', fontSize: '13px', fontWeight: 600 }}>
           {toast}
         </div>
       )}
 
-      {/* Alert */}
       {pendingCount > 0 && (
         <div style={{ background: '#6366f110', border: '1px solid #6366f133', borderRadius: '12px', padding: '11px 16px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
           <span style={{ fontSize: '15px' }}>💳</span>
@@ -151,7 +166,6 @@ export default function PaymentHistory() {
         </div>
       )}
 
-      {/* Tabs */}
       <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', flexWrap: 'wrap' }}>
         {tabs.map(tab => {
           const count  = tab === 'all' ? payments.length : payments.filter(p => p.status === tab).length
@@ -172,7 +186,6 @@ export default function PaymentHistory() {
 
       <div style={{ display: 'grid', gridTemplateColumns: selected ? '1fr 360px' : '1fr', gap: '14px', alignItems: 'start' }}>
 
-        {/* Payment list */}
         <div>
           {loading ? (
             <div style={{ textAlign: 'center', padding: '50px', color: '#4b5563' }}>Loading…</div>
@@ -210,7 +223,7 @@ export default function PaymentHistory() {
                         {payment.userEmail}
                       </div>
                       <div style={{ color: '#4b5563', fontSize: '11px' }}>
-                        {payment.method === 'giftcard' ? `🎁 Gift Card` : `${payment.currency} · ${payment.cryptoType?.toUpperCase() || ''}`}
+                        {payment.method === 'giftcard' ? '🎁 Gift Card' : `${payment.currency} · ${payment.cryptoType?.toUpperCase() || ''}`}
                         {' · '}{isRenewal ? 'Renewal' : 'New Order'}
                       </div>
                     </div>
@@ -230,7 +243,6 @@ export default function PaymentHistory() {
           )}
         </div>
 
-        {/* Detail panel */}
         {selected && (
           <div style={{ background: 'linear-gradient(145deg,#13131f,#0d0d18)', border: '1px solid #6366f122', borderRadius: '16px', padding: '18px', position: 'sticky', top: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
