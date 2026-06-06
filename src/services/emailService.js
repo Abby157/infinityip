@@ -1,6 +1,6 @@
 import emailjs from '@emailjs/browser'
 
-const SERVICE_ID  = 'service_hlb4460'
+const SERVICE_ID  = 'service_hlb446o'
 const PUBLIC_KEY  = 't8kS5uait_n1Z8x-i'
 
 // Template IDs — we'll use one universal template
