@@ -14,11 +14,13 @@ const TIER_COLORS = {
 const FLAG = code => `https://flagcdn.com/24x18/${code?.toLowerCase()}.png`
 
 export default function MyResources() {
-  const { user }  = useAuth()
-  const navigate  = useNavigate()
-  const [ips,     setIps]     = useState([])
-  const [loading, setLoading] = useState(true)
-  const [filter,  setFilter]  = useState('all')
+  const { user }    = useAuth()
+  const navigate    = useNavigate()
+  const [ips,       setIps]       = useState([])
+  const [loading,   setLoading]   = useState(true)
+  const [filter,    setFilter]    = useState('all')
+  const [healthData, setHealthData] = useState({})
+  const [checking,  setChecking]  = useState({})
 
   useEffect(() => {
     if (!user) return
@@ -36,6 +38,51 @@ export default function MyResources() {
     }
     load()
   }, [user])
+
+  const checkIPHealth = async (ip) => {
+    if (checking[ip.id]) return
+    setChecking(prev => ({ ...prev, [ip.id]: true }))
+    try {
+      const start = Date.now()
+      const res = await fetch(`https://ip-api.com/json/${ip.ipAddress}?fields=status,country,city,isp,org,proxy,hosting,mobile,query`)
+      const latency = Date.now() - start
+      const data = await res.json()
+
+      let trustScore = 85
+      if (data.proxy)   trustScore -= 20
+      if (data.hosting) trustScore -= 15
+      if (data.mobile)  trustScore += 5
+      trustScore = Math.max(10, Math.min(99, trustScore))
+
+      let riskLevel = 'Low'
+      let riskColor = '#22c55e'
+      if (trustScore < 50)  { riskLevel = 'High';   riskColor = '#ef4444' }
+      else if (trustScore < 70) { riskLevel = 'Medium'; riskColor = '#f59e0b' }
+
+      setHealthData(prev => ({
+        ...prev,
+        [ip.id]: {
+          trustScore,
+          latency:   `${latency}ms`,
+          isp:       data.isp || '—',
+          org:       data.org || '—',
+          isProxy:   data.proxy,
+          isHosting: data.hosting,
+          isMobile:  data.mobile,
+          riskLevel,
+          riskColor,
+          checkedAt: new Date().toLocaleTimeString(),
+        }
+      }))
+    } catch (err) {
+      console.error(err)
+      setHealthData(prev => ({
+        ...prev,
+        [ip.id]: { error: 'Health check failed' }
+      }))
+    }
+    setChecking(prev => ({ ...prev, [ip.id]: false }))
+  }
 
   const tabs = [
     { id: 'all',     label: 'All' },
@@ -121,9 +168,17 @@ export default function MyResources() {
                 expired:      '#6b7280',
               }[ip.status] || '#6b7280'
 
-              const date = ip.createdAt?.toDate?.()?.toLocaleDateString('en-US', {
-                month: 'short', day: 'numeric', year: 'numeric'
-              }) || '—'
+              const date   = ip.createdAt?.toDate?.()?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) || '—'
+              const health = healthData[ip.id]
+              const isChecking = checking[ip.id]
+
+              const expiry = ip.expiryDate?.toDate
+                ? ip.expiryDate.toDate()
+                : ip.expiryDate ? new Date(ip.expiryDate) : null
+
+              const daysLeft = expiry
+                ? Math.ceil((expiry - new Date()) / (1000 * 60 * 60 * 24))
+                : null
 
               return (
                 <div key={ip.id} style={{
@@ -161,9 +216,9 @@ export default function MyResources() {
                   {/* Stats */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '12px' }}>
                     {[
-                      { label: 'Trust',   value: ip.trustScore || '—', color: '#22c55e' },
-                      { label: 'Latency', value: ip.latency    || '—', color: '#6366f1' },
-                      { label: 'Uptime',  value: ip.uptime     || '—', color: '#8b5cf6' },
+                      { label: 'Trust',   value: health ? `${health.trustScore}%` : (ip.trustScore || '—'), color: health ? (health.trustScore > 70 ? '#22c55e' : health.trustScore > 50 ? '#f59e0b' : '#ef4444') : '#22c55e' },
+                      { label: 'Latency', value: health ? health.latency : (ip.latency || '—'), color: '#6366f1' },
+                      { label: 'Risk',    value: health ? health.riskLevel : '—', color: health ? health.riskColor : '#6b7280' },
                     ].map(s => (
                       <div key={s.label} style={{ background: '#ffffff06', border: '1px solid #ffffff08', borderRadius: '8px', padding: '8px', textAlign: 'center' }}>
                         <div style={{ color: s.color, fontSize: '11px', fontWeight: 700 }}>{s.value}</div>
@@ -186,6 +241,53 @@ export default function MyResources() {
                     </div>
                   ) : null}
 
+                  {/* Expiry warning */}
+                  {daysLeft !== null && daysLeft <= 7 && daysLeft > 0 && (
+                    <div style={{ background: '#f59e0b10', border: '1px solid #f59e0b33', borderRadius: '10px', padding: '8px 12px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '13px' }}>⚠️</span>
+                      <span style={{ color: '#fbbf24', fontSize: '11px', fontWeight: 600 }}>Expires in {daysLeft} day{daysLeft > 1 ? 's' : ''} — Renew now!</span>
+                    </div>
+                  )}
+
+                  {/* Health checker results */}
+                  {health && !health.error && (
+                    <div style={{ background: '#6366f108', border: '1px solid #6366f122', borderRadius: '10px', padding: '10px 12px', marginBottom: '10px' }}>
+                      <div style={{ color: '#818cf8', fontSize: '10px', fontWeight: 700, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>🔍 Health Report</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        {[
+                          { label: 'ISP',      value: health.isp },
+                          { label: 'Org',      value: health.org },
+                          { label: 'Proxy',    value: health.isProxy   ? '⚠️ Detected' : '✅ Clean',    color: health.isProxy   ? '#f59e0b' : '#22c55e' },
+                          { label: 'Hosting',  value: health.isHosting ? '⚠️ Detected' : '✅ Clean',    color: health.isHosting ? '#f59e0b' : '#22c55e' },
+                          { label: 'Mobile',   value: health.isMobile  ? '✅ Yes'      : 'No' },
+                          { label: 'Checked',  value: health.checkedAt },
+                        ].map(row => (
+                          <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ color: '#6b7280', fontSize: '10px' }}>{row.label}</span>
+                            <span style={{ color: row.color || '#9ca3af', fontSize: '10px', fontWeight: 600, textAlign: 'right', maxWidth: '60%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {health?.error && (
+                    <div style={{ background: '#ef444410', border: '1px solid #ef444433', borderRadius: '10px', padding: '8px 12px', marginBottom: '10px' }}>
+                      <span style={{ color: '#f87171', fontSize: '11px' }}>❌ {health.error}</span>
+                    </div>
+                  )}
+
+                  {/* Health check button */}
+                  {ip.status === 'active' && ip.ipAddress && (
+                    <button
+                      onClick={() => checkIPHealth(ip)}
+                      disabled={isChecking}
+                      style={{ width: '100%', marginBottom: '8px', background: isChecking ? '#6366f130' : '#6366f115', border: '1px solid #6366f133', color: isChecking ? '#6b7280' : '#818cf8', borderRadius: '8px', padding: '9px', cursor: isChecking ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '12px' }}
+                    >
+                      {isChecking ? '🔍 Checking…' : health ? '🔄 Re-check Health' : '🔍 Check IP Health'}
+                    </button>
+                  )}
+
                   {/* Footer */}
                   <div style={{ paddingTop: '10px', borderTop: '1px solid #ffffff08' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -201,7 +303,6 @@ export default function MyResources() {
                       </button>
                     )}
                   </div>
-
                 </div>
               )
             })}
