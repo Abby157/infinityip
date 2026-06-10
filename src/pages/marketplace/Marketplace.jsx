@@ -262,10 +262,8 @@ export default function Marketplace() {
     if (selectedTypes.length > 0) list = list.filter(l => selectedTypes.includes(l.ipType))
     if (availOnly) list = list.filter(l => l.available > 0)
     list.sort((a, b) => {
-      if (sortBy === 'featured') {
-        if (a.featured !== b.featured) return a.featured ? -1 : 1
-        return 0
-      }
+  if (sortBy === 'featured') return 0
+      
       if (sortBy === 'price-asc')    return (customPrices?.[a.tier] || TIERS[a.tier].price) - (customPrices?.[b.tier] || TIERS[b.tier].price)
       if (sortBy === 'price-desc')   return (customPrices?.[b.tier] || TIERS[b.tier].price) - (customPrices?.[a.tier] || TIERS[a.tier].price)
       if (sortBy === 'availability') return b.available / b.total - a.available / a.total
