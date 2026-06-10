@@ -7,18 +7,31 @@ import { db } from '../../firebase/config'
 
 const ADMIN_EMAIL = 'davehack966@gmail.com'
 
+const TIERS = [
+  { id: 'low',      label: 'Low',      default: 220, color: '#6b7280' },
+  { id: 'standard', label: 'Standard', default: 280, color: '#3b82f6' },
+  { id: 'strong',   label: 'Strong',   default: 350, color: '#8b5cf6' },
+  { id: 'elite',    label: 'Elite',    default: 500, color: '#f59e0b' },
+]
+
+const CRYPTOS = [
+  { id: 'btc',  label: 'BTC', icon: '₿', color: '#f59e0b' },
+  { id: 'eth',  label: 'ETH', icon: 'Ξ', color: '#6366f1' },
+  { id: 'usdt', label: 'USDT', icon: '₮', color: '#22c55e' },
+]
+
 export default function Users() {
-  const [users,       setUsers]       = useState([])
-  const [orders,      setOrders]      = useState([])
-  const [loading,     setLoading]     = useState(true)
-  const [search,      setSearch]      = useState('')
-  const [selected,    setSelected]    = useState(null)
-  const [acting,      setActing]      = useState(false)
-  const [toast,       setToast]       = useState('')
-  const [walletAmt,   setWalletAmt]   = useState('')
-  const [notifMsg,    setNotifMsg]    = useState('')
-  const [customPrice, setCustomPrice] = useState('')
-  const [customWallet,setCustomWallet]= useState('')
+  const [users,        setUsers]        = useState([])
+  const [orders,       setOrders]       = useState([])
+  const [loading,      setLoading]      = useState(true)
+  const [search,       setSearch]       = useState('')
+  const [selected,     setSelected]     = useState(null)
+  const [acting,       setActing]       = useState(false)
+  const [toast,        setToast]        = useState('')
+  const [walletAmt,    setWalletAmt]    = useState('')
+  const [notifMsg,     setNotifMsg]     = useState('')
+  const [customPrices, setCustomPrices] = useState({ low: '', standard: '', strong: '', elite: '' })
+  const [customWallets,setCustomWallets]= useState({ btc: '', eth: '', usdt: '' })
 
   useEffect(() => { load() }, [])
 
@@ -36,7 +49,6 @@ export default function Users() {
   }
 
   const showToast = msg => { setToast(msg); setTimeout(() => setToast(''), 3000) }
-
   const getUserOrders = uid => orders.filter(o => o.userId === uid)
 
   const updateWallet = async (user) => {
@@ -44,17 +56,12 @@ export default function Users() {
     if (isNaN(amt)) return
     setActing(true)
     try {
-      await updateDoc(doc(db, 'users', user.id), {
-        walletBalance: amt,
-        updatedAt: serverTimestamp(),
-      })
+      await updateDoc(doc(db, 'users', user.id), { walletBalance: amt, updatedAt: serverTimestamp() })
       await addDoc(collection(db, 'notifications'), {
-        userId:    user.uid || user.id,
-        type:      'payment',
-        title:     'Wallet Updated 💰',
-        message:   `Your wallet balance has been updated to $${amt.toLocaleString()}.`,
-        read:      false,
-        createdAt: serverTimestamp(),
+        userId: user.uid || user.id, type: 'payment',
+        title: 'Wallet Updated 💰',
+        message: `Your wallet balance has been updated to $${amt.toLocaleString()}.`,
+        read: false, createdAt: serverTimestamp(),
       })
       setUsers(prev => prev.map(u => u.id === user.id ? { ...u, walletBalance: amt } : u))
       setSelected(prev => prev?.id === user.id ? { ...prev, walletBalance: amt } : prev)
@@ -64,63 +71,65 @@ export default function Users() {
     setActing(false)
   }
 
-  const updateCustomPrice = async (user) => {
-    const price = parseFloat(customPrice)
-    if (isNaN(price) || price <= 0) return
+  const saveCustomPrices = async (user) => {
     setActing(true)
     try {
-      await updateDoc(doc(db, 'users', user.id), {
-        customPrice: price,
-        updatedAt:   serverTimestamp(),
+      const prices = {}
+      TIERS.forEach(tier => {
+        const val = parseFloat(customPrices[tier.id])
+        if (!isNaN(val) && val > 0) prices[tier.id] = val
       })
-      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, customPrice: price } : u))
-      setSelected(prev => prev?.id === user.id ? { ...prev, customPrice: price } : prev)
-      setCustomPrice('')
-      showToast(`✅ Custom price set to $${price.toLocaleString()}`)
+      await updateDoc(doc(db, 'users', user.id), {
+        customPrices: { ...(user.customPrices || {}), ...prices },
+        updatedAt: serverTimestamp(),
+      })
+      const updated = { ...(user.customPrices || {}), ...prices }
+      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, customPrices: updated } : u))
+      setSelected(prev => prev?.id === user.id ? { ...prev, customPrices: updated } : prev)
+      setCustomPrices({ low: '', standard: '', strong: '', elite: '' })
+      showToast('✅ Custom prices saved')
     } catch (err) { console.error(err) }
     setActing(false)
   }
 
-  const clearCustomPrice = async (user) => {
+  const clearCustomPrices = async (user) => {
     setActing(true)
     try {
-      await updateDoc(doc(db, 'users', user.id), {
-        customPrice: null,
-        updatedAt:   serverTimestamp(),
-      })
-      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, customPrice: null } : u))
-      setSelected(prev => prev?.id === user.id ? { ...prev, customPrice: null } : prev)
-      showToast('✅ Custom price removed — using default')
+      await updateDoc(doc(db, 'users', user.id), { customPrices: null, updatedAt: serverTimestamp() })
+      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, customPrices: null } : u))
+      setSelected(prev => prev?.id === user.id ? { ...prev, customPrices: null } : prev)
+      showToast('✅ Custom prices removed')
     } catch (err) { console.error(err) }
     setActing(false)
   }
 
-  const updateCustomWallet = async (user) => {
-    if (!customWallet.trim()) return
+  const saveCustomWallets = async (user) => {
     setActing(true)
     try {
-      await updateDoc(doc(db, 'users', user.id), {
-        customWallet: customWallet.trim(),
-        updatedAt:    serverTimestamp(),
+      const wallets = {}
+      CRYPTOS.forEach(c => {
+        if (customWallets[c.id]?.trim()) wallets[c.id] = customWallets[c.id].trim()
       })
-      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, customWallet: customWallet.trim() } : u))
-      setSelected(prev => prev?.id === user.id ? { ...prev, customWallet: customWallet.trim() } : prev)
-      setCustomWallet('')
-      showToast('✅ Custom wallet address saved')
+      await updateDoc(doc(db, 'users', user.id), {
+        customWallets: { ...(user.customWallets || {}), ...wallets },
+        updatedAt: serverTimestamp(),
+      })
+      const updated = { ...(user.customWallets || {}), ...wallets }
+      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, customWallets: updated } : u))
+      setSelected(prev => prev?.id === user.id ? { ...prev, customWallets: updated } : prev)
+      setCustomWallets({ btc: '', eth: '', usdt: '' })
+      showToast('✅ Custom wallets saved')
     } catch (err) { console.error(err) }
     setActing(false)
   }
 
-  const clearCustomWallet = async (user) => {
+  const clearCustomWallets = async (user) => {
     setActing(true)
     try {
-      await updateDoc(doc(db, 'users', user.id), {
-        customWallet: null,
-        updatedAt:    serverTimestamp(),
-      })
-      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, customWallet: null } : u))
-      setSelected(prev => prev?.id === user.id ? { ...prev, customWallet: null } : prev)
-      showToast('✅ Custom wallet removed — using default')
+      await updateDoc(doc(db, 'users', user.id), { customWallets: null, updatedAt: serverTimestamp() })
+      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, customWallets: null } : u))
+      setSelected(prev => prev?.id === user.id ? { ...prev, customWallets: null } : prev)
+      showToast('✅ Custom wallets removed')
     } catch (err) { console.error(err) }
     setActing(false)
   }
@@ -130,12 +139,9 @@ export default function Users() {
     setActing(true)
     try {
       await addDoc(collection(db, 'notifications'), {
-        userId:    user.uid || user.id,
-        type:      'system',
-        title:     'Message from Support ⚙️',
-        message:   notifMsg.trim(),
-        read:      false,
-        createdAt: serverTimestamp(),
+        userId: user.uid || user.id, type: 'system',
+        title: 'Message from Support ⚙️',
+        message: notifMsg.trim(), read: false, createdAt: serverTimestamp(),
       })
       setNotifMsg('')
       showToast('✅ Notification sent')
@@ -164,6 +170,9 @@ export default function Users() {
     month: 'short', day: 'numeric', year: 'numeric'
   }) || '—'
 
+  const hasCustomPrices  = (u) => u.customPrices  && Object.keys(u.customPrices).length  > 0
+  const hasCustomWallets = (u) => u.customWallets && Object.keys(u.customWallets).length > 0
+
   return (
     <div style={{ padding: '14px 16px' }}>
 
@@ -188,7 +197,7 @@ export default function Users() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: selected ? '1fr 340px' : '1fr', gap: '14px', alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: selected ? '1fr 360px' : '1fr', gap: '14px', alignItems: 'start' }}>
 
         {/* User list */}
         <div>
@@ -210,7 +219,13 @@ export default function Users() {
                 return (
                   <div
                     key={user.id}
-                    onClick={() => { setSelected(isSel ? null : user); setWalletAmt(''); setNotifMsg(''); setCustomPrice(''); setCustomWallet('') }}
+                    onClick={() => {
+                      setSelected(isSel ? null : user)
+                      setWalletAmt('')
+                      setNotifMsg('')
+                      setCustomPrices({ low: '', standard: '', strong: '', elite: '' })
+                      setCustomWallets({ btc: '', eth: '', usdt: '' })
+                    }}
                     style={{
                       background: isSel ? 'linear-gradient(145deg,#1a1a2e,#16213e)' : 'linear-gradient(145deg,#13131f,#0d0d18)',
                       border: `1px solid ${isSel ? '#6366f144' : '#ffffff0d'}`,
@@ -227,10 +242,10 @@ export default function Users() {
                     <div style={{ flex: 1, minWidth: '130px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px', flexWrap: 'wrap' }}>
                         <span style={{ color: '#fff', fontWeight: 700, fontSize: '13px' }}>{user.fullName || 'Unknown'}</span>
-                        {isAdminUser && <span style={{ background: '#f59e0b18', border: '1px solid #f59e0b44', borderRadius: '20px', padding: '1px 6px', color: '#fbbf24', fontSize: '9px', fontWeight: 700 }}>ADMIN</span>}
+                        {isAdminUser    && <span style={{ background: '#f59e0b18', border: '1px solid #f59e0b44', borderRadius: '20px', padding: '1px 6px', color: '#fbbf24', fontSize: '9px', fontWeight: 700 }}>ADMIN</span>}
                         {user.suspended && <span style={{ background: '#ef444418', border: '1px solid #ef444433', borderRadius: '20px', padding: '1px 6px', color: '#f87171', fontSize: '9px', fontWeight: 700 }}>SUSPENDED</span>}
-                        {user.customPrice && <span style={{ background: '#22c55e18', border: '1px solid #22c55e33', borderRadius: '20px', padding: '1px 6px', color: '#4ade80', fontSize: '9px', fontWeight: 700 }}>CUSTOM PRICE</span>}
-                        {user.customWallet && <span style={{ background: '#6366f118', border: '1px solid #6366f133', borderRadius: '20px', padding: '1px 6px', color: '#818cf8', fontSize: '9px', fontWeight: 700 }}>CUSTOM WALLET</span>}
+                        {hasCustomPrices(user)  && <span style={{ background: '#22c55e18', border: '1px solid #22c55e33', borderRadius: '20px', padding: '1px 6px', color: '#4ade80', fontSize: '9px', fontWeight: 700 }}>CUSTOM PRICE</span>}
+                        {hasCustomWallets(user) && <span style={{ background: '#6366f118', border: '1px solid #6366f133', borderRadius: '20px', padding: '1px 6px', color: '#818cf8', fontSize: '9px', fontWeight: 700 }}>CUSTOM WALLET</span>}
                       </div>
                       <div style={{ color: '#4b5563', fontSize: '11px' }}>{user.email}</div>
                     </div>
@@ -239,17 +254,14 @@ export default function Users() {
                       <div style={{ color: '#22c55e', fontWeight: 700, fontSize: '14px' }}>{activeCount}</div>
                       <div style={{ color: '#4b5563', fontSize: '9px' }}>Active IPs</div>
                     </div>
-
                     <div style={{ textAlign: 'center' }}>
                       <div style={{ color: '#fff', fontWeight: 700, fontSize: '14px' }}>${(user.walletBalance || 0).toLocaleString()}</div>
                       <div style={{ color: '#4b5563', fontSize: '9px' }}>Wallet</div>
                     </div>
-
                     <div style={{ textAlign: 'center' }}>
                       <div style={{ color: '#9ca3af', fontWeight: 600, fontSize: '12px' }}>{userOrders.length}</div>
                       <div style={{ color: '#4b5563', fontSize: '9px' }}>Orders</div>
                     </div>
-
                     <div style={{ color: '#374151', fontSize: '11px' }}>{joined(user)}</div>
                   </div>
                 )
@@ -260,7 +272,7 @@ export default function Users() {
 
         {/* Detail panel */}
         {selected && (
-          <div style={{ background: 'linear-gradient(145deg,#13131f,#0d0d18)', border: '1px solid #6366f122', borderRadius: '16px', padding: '18px', position: 'sticky', top: '20px' }}>
+          <div style={{ background: 'linear-gradient(145deg,#13131f,#0d0d18)', border: '1px solid #6366f122', borderRadius: '16px', padding: '18px', position: 'sticky', top: '20px', maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <div style={{ color: '#818cf8', fontWeight: 800, fontSize: '13px' }}>User Detail</div>
               <button onClick={() => setSelected(null)} style={{ background: '#ffffff0d', border: '1px solid #ffffff10', color: '#9ca3af', width: '26px', height: '26px', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' }}>×</button>
@@ -292,11 +304,9 @@ export default function Users() {
             {/* Info */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', marginBottom: '16px' }}>
               {[
-                { label: 'Role',          value: selected.email === ADMIN_EMAIL ? 'Administrator' : 'User' },
-                { label: 'Joined',        value: joined(selected) },
-                { label: 'Status',        value: selected.suspended ? 'Suspended' : 'Active' },
-                { label: 'Custom Price',  value: selected.customPrice ? `$${selected.customPrice.toLocaleString()}` : 'Default' },
-                { label: 'Custom Wallet', value: selected.customWallet ? selected.customWallet.slice(0,16)+'…' : 'Default' },
+                { label: 'Role',   value: selected.email === ADMIN_EMAIL ? 'Administrator' : 'User' },
+                { label: 'Joined', value: joined(selected) },
+                { label: 'Status', value: selected.suspended ? 'Suspended' : 'Active' },
               ].map(row => (
                 <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: '#6b7280', fontSize: '11px' }}>{row.label}</span>
@@ -306,7 +316,7 @@ export default function Users() {
             </div>
 
             {/* Set wallet balance */}
-            <div style={{ marginBottom: '12px' }}>
+            <div style={{ marginBottom: '14px' }}>
               <label style={{ color: '#6b7280', fontSize: '10px', display: 'block', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Set Wallet Balance ($)</label>
               <div style={{ display: 'flex', gap: '6px' }}>
                 <input
@@ -320,48 +330,83 @@ export default function Users() {
               </div>
             </div>
 
-            {/* Custom price */}
-            <div style={{ marginBottom: '12px' }}>
-              <label style={{ color: '#6b7280', fontSize: '10px', display: 'block', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Custom IP Price ($) <span style={{ color: '#374151' }}>— overrides default</span>
-              </label>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                <input
-                  value={customPrice} onChange={e => setCustomPrice(e.target.value)}
-                  placeholder={selected.customPrice ? `Current: $${selected.customPrice}` : 'e.g. 150'} type="number"
-                  style={{ flex: 1, background: '#ffffff08', border: '1px solid #ffffff12', borderRadius: '8px', padding: '8px 12px', color: '#fff', fontSize: '12px', outline: 'none' }}
-                />
-                <button onClick={() => updateCustomPrice(selected)} disabled={acting} style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', border: 'none', color: '#fff', borderRadius: '8px', padding: '8px 12px', cursor: acting ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '12px' }}>
-                  Set
-                </button>
-              </div>
-              {selected.customPrice && (
-                <button onClick={() => clearCustomPrice(selected)} disabled={acting} style={{ marginTop: '5px', background: 'none', border: 'none', color: '#ef4444', fontSize: '11px', cursor: 'pointer', padding: 0 }}>
-                  ✕ Remove custom price
-                </button>
-              )}
-            </div>
-
-            {/* Custom wallet */}
-            <div style={{ marginBottom: '12px' }}>
-              <label style={{ color: '#6b7280', fontSize: '10px', display: 'block', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Custom Wallet Address <span style={{ color: '#374151' }}>— overrides default</span>
-              </label>
-              <input
-                value={customWallet} onChange={e => setCustomWallet(e.target.value)}
-                placeholder={selected.customWallet ? selected.customWallet.slice(0,20)+'…' : 'Enter BTC/ETH/USDT address…'}
-                style={{ width: '100%', background: '#ffffff08', border: '1px solid #ffffff12', borderRadius: '8px', padding: '8px 12px', color: '#fff', fontSize: '11px', outline: 'none', boxSizing: 'border-box', fontFamily: 'monospace', marginBottom: '6px' }}
-              />
-              <div style={{ display: 'flex', gap: '6px' }}>
-                <button onClick={() => updateCustomWallet(selected)} disabled={acting || !customWallet.trim()} style={{ flex: 1, background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', border: 'none', color: '#fff', borderRadius: '8px', padding: '8px', cursor: acting ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '12px' }}>
-                  Save Wallet
-                </button>
-                {selected.customWallet && (
-                  <button onClick={() => clearCustomWallet(selected)} disabled={acting} style={{ background: '#ef444418', border: '1px solid #ef444433', color: '#f87171', borderRadius: '8px', padding: '8px 12px', cursor: acting ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '12px' }}>
-                    Clear
+            {/* Custom prices per tier */}
+            <div style={{ marginBottom: '14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <label style={{ color: '#6b7280', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Custom Prices per Tier
+                </label>
+                {hasCustomPrices(selected) && (
+                  <button onClick={() => clearCustomPrices(selected)} disabled={acting} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '10px', cursor: 'pointer', padding: 0 }}>
+                    ✕ Clear all
                   </button>
                 )}
               </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {TIERS.map(tier => (
+                  <div key={tier.id} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div style={{ width: '60px', background: `${tier.color}18`, border: `1px solid ${tier.color}44`, borderRadius: '6px', padding: '4px 8px', textAlign: 'center' }}>
+                      <span style={{ color: tier.color, fontSize: '10px', fontWeight: 700 }}>{tier.label}</span>
+                    </div>
+                    <input
+                      value={customPrices[tier.id]}
+                      onChange={e => setCustomPrices(prev => ({ ...prev, [tier.id]: e.target.value }))}
+                      placeholder={selected.customPrices?.[tier.id] ? `$${selected.customPrices[tier.id]}` : `$${tier.default}`}
+                      type="number"
+                      style={{ flex: 1, background: '#ffffff08', border: '1px solid #ffffff12', borderRadius: '8px', padding: '7px 10px', color: '#fff', fontSize: '12px', outline: 'none' }}
+                    />
+                    {selected.customPrices?.[tier.id] && (
+                      <span style={{ color: '#22c55e', fontSize: '10px', fontWeight: 700, whiteSpace: 'nowrap' }}>✓ ${selected.customPrices[tier.id]}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={() => saveCustomPrices(selected)}
+                disabled={acting || TIERS.every(t => !customPrices[t.id])}
+                style={{ width: '100%', marginTop: '8px', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', border: 'none', color: '#fff', borderRadius: '8px', padding: '8px', cursor: acting ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '12px' }}
+              >
+                💾 Save Custom Prices
+              </button>
+            </div>
+
+            {/* Custom wallets per crypto */}
+            <div style={{ marginBottom: '14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <label style={{ color: '#6b7280', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Custom Wallets per Crypto
+                </label>
+                {hasCustomWallets(selected) && (
+                  <button onClick={() => clearCustomWallets(selected)} disabled={acting} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '10px', cursor: 'pointer', padding: 0 }}>
+                    ✕ Clear all
+                  </button>
+                )}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {CRYPTOS.map(crypto => (
+                  <div key={crypto.id}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>
+                      <span style={{ color: crypto.color, fontSize: '12px', fontWeight: 700, width: '40px' }}>{crypto.icon} {crypto.label}</span>
+                      {selected.customWallets?.[crypto.id] && (
+                        <span style={{ color: '#22c55e', fontSize: '9px', fontWeight: 700 }}>✓ Set</span>
+                      )}
+                    </div>
+                    <input
+                      value={customWallets[crypto.id]}
+                      onChange={e => setCustomWallets(prev => ({ ...prev, [crypto.id]: e.target.value }))}
+                      placeholder={selected.customWallets?.[crypto.id] ? selected.customWallets[crypto.id].slice(0,20)+'…' : `Enter ${crypto.label} address…`}
+                      style={{ width: '100%', background: '#ffffff08', border: `1px solid ${crypto.color}33`, borderRadius: '8px', padding: '7px 10px', color: '#fff', fontSize: '10px', outline: 'none', boxSizing: 'border-box', fontFamily: 'monospace' }}
+                    />
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={() => saveCustomWallets(selected)}
+                disabled={acting || CRYPTOS.every(c => !customWallets[c.id]?.trim())}
+                style={{ width: '100%', marginTop: '8px', background: 'linear-gradient(135deg,#f59e0b,#d97706)', border: 'none', color: '#000', borderRadius: '8px', padding: '8px', cursor: acting ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '12px' }}
+              >
+                💾 Save Custom Wallets
+              </button>
             </div>
 
             {/* Send notification */}
