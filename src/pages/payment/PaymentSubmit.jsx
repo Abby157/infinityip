@@ -19,29 +19,32 @@ const GIFT_CARD_OPTIONS = [
 ]
 
 export default function PaymentSubmit() {
-  const { user }  = useAuth()
-  const navigate  = useNavigate()
-  const location  = useLocation()
-  const orderId   = location.state?.orderId || null
+  const { user }   = useAuth()
+  const navigate   = useNavigate()
+  const location   = useLocation()
+  const orderId    = location.state?.orderId || null
 
-  const [order,      setOrder]      = useState(null)
-  const [loading,    setLoading]    = useState(true)
-  const [method,     setMethod]     = useState('crypto')
-  const [cryptoType, setCryptoType] = useState('btc')
-  const [giftType,   setGiftType]   = useState('apple')
-  const [txid,       setTxid]       = useState('')
-  const [cardCode,   setCardCode]   = useState('')
-  const [screenshot, setScreenshot] = useState(null)
-  const [preview,    setPreview]    = useState(null)
-  const [submitting, setSubmitting] = useState(false)
-  const [success,    setSuccess]    = useState(false)
-  const [error,      setError]      = useState('')
-  const [wallets,    setWallets]    = useState({})
-  const [copied,     setCopied]     = useState(false)
+  const [order,       setOrder]       = useState(null)
+  const [loading,     setLoading]     = useState(true)
+  const [method,      setMethod]      = useState('crypto')
+  const [cryptoType,  setCryptoType]  = useState('btc')
+  const [giftType,    setGiftType]    = useState('apple')
+  const [txid,        setTxid]        = useState('')
+  const [cardCode,    setCardCode]    = useState('')
+  const [screenshot,  setScreenshot]  = useState(null)
+  const [preview,     setPreview]     = useState(null)
+  const [submitting,  setSubmitting]  = useState(false)
+  const [success,     setSuccess]     = useState(false)
+  const [error,       setError]       = useState('')
+  const [wallets,     setWallets]     = useState({})
+  const [copied,      setCopied]      = useState(false)
+  const [customPrice, setCustomPrice] = useState(null)
+  const [hasCustomWallet, setHasCustomWallet] = useState(false)
 
   useEffect(() => {
     const load = async () => {
       try {
+        // Load site settings for default wallet addresses
         const settingsSnap = await getDoc(doc(db, 'settings', 'site'))
         if (settingsSnap.exists()) {
           const d = settingsSnap.data()
@@ -51,6 +54,31 @@ export default function PaymentSubmit() {
             usdt: d.usdtAddress || 'TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE',
           })
         }
+
+        // Load user's custom wallet and price if set by admin
+        if (user?.uid) {
+          const userSnap = await getDoc(doc(db, 'users', user.uid))
+          if (userSnap.exists()) {
+            const userData = userSnap.data()
+
+            // Custom wallet — overrides default for all crypto types
+            if (userData.customWallet) {
+              setWallets({
+                btc:  userData.customWallet,
+                eth:  userData.customWallet,
+                usdt: userData.customWallet,
+              })
+              setHasCustomWallet(true)
+            }
+
+            // Custom price — overrides order price
+            if (userData.customPrice) {
+              setCustomPrice(userData.customPrice)
+            }
+          }
+        }
+
+        // Load order
         if (orderId) {
           const orderSnap = await getDoc(doc(db, 'orders', orderId))
           if (orderSnap.exists()) setOrder({ id: orderSnap.id, ...orderSnap.data() })
@@ -59,7 +87,7 @@ export default function PaymentSubmit() {
       setLoading(false)
     }
     load()
-  }, [orderId])
+  }, [orderId, user])
 
   const handleFileChange = (e) => {
     const file = e.target.files[0]
@@ -82,9 +110,7 @@ export default function PaymentSubmit() {
       document.body.removeChild(el)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
-    } catch (err) {
-      console.error('Copy failed', err)
-    }
+    } catch (err) { console.error('Copy failed', err) }
   }
 
   const handleMethodChange = (newMethod) => {
@@ -94,9 +120,11 @@ export default function PaymentSubmit() {
     setCardCode('')
   }
 
+  // Use custom price if set, otherwise use order price
+  const displayPrice = customPrice || order?.price || 0
+
   const handleSubmit = async () => {
     setError('')
-
 
     if (!screenshot)
       return setError('Please upload a screenshot as proof of payment.')
@@ -112,7 +140,7 @@ export default function PaymentSubmit() {
         userEmail:    user.email,
         orderId:      orderId || null,
         method,
-        amount:       order?.price || 0,
+        amount:       displayPrice,
         currency:     method === 'crypto' ? cryptoType.toUpperCase() : giftType,
         screenshotURL,
         status:       'under_review',
@@ -135,7 +163,7 @@ export default function PaymentSubmit() {
         userId:    'admin',
         type:      'payment',
         title:     'New Payment Submitted 💳',
-        message:   `${user.email} submitted a ${method} payment of $${order?.price || 0}`,
+        message:   `${user.email} submitted a ${method} payment of $${displayPrice}`,
         read:      false,
         createdAt: serverTimestamp(),
       })
@@ -144,7 +172,7 @@ export default function PaymentSubmit() {
         userId:    user.uid,
         type:      'payment',
         title:     'Payment Submitted ✅',
-        message:   `Your payment of $${order?.price || 0} has been submitted and is under review.`,
+        message:   `Your payment of $${displayPrice} has been submitted and is under review.`,
         read:      false,
         createdAt: serverTimestamp(),
       })
@@ -152,7 +180,7 @@ export default function PaymentSubmit() {
       await sendPaymentReceivedEmail({
         toEmail: user.email,
         toName:  user.email.split('@')[0],
-        amount:  order?.price || 0,
+        amount:  displayPrice,
         tier:    order?.tier,
         city:    order?.city,
       })
@@ -213,10 +241,21 @@ export default function PaymentSubmit() {
                 <div style={{ color: '#6b7280', fontSize: '11px', marginTop: '2px' }}>{order.tier?.toUpperCase()} · {order.ipType}</div>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <div style={{ color: '#fff', fontSize: '22px', fontWeight: 900 }}>${order.price?.toLocaleString()}</div>
-                <div style={{ color: '#6b7280', fontSize: '10px' }}>/month</div>
+                <div style={{ color: '#fff', fontSize: '22px', fontWeight: 900 }}>${displayPrice?.toLocaleString()}</div>
+                {customPrice && order.price !== customPrice && (
+                  <div style={{ color: '#22c55e', fontSize: '10px', fontWeight: 700 }}>Special Price ✨</div>
+                )}
+                {!customPrice && <div style={{ color: '#6b7280', fontSize: '10px' }}>/month</div>}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Custom wallet notice */}
+        {hasCustomWallet && (
+          <div style={{ background: '#22c55e10', border: '1px solid #22c55e33', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '14px' }}>✨</span>
+            <span style={{ color: '#4ade80', fontSize: '12px', fontWeight: 600 }}>You have a dedicated payment address</span>
           </div>
         )}
 
@@ -274,12 +313,10 @@ export default function PaymentSubmit() {
               <div style={{ color: '#4b5563', fontSize: '10px', marginTop: '5px' }}>Network: {selectedCrypto?.network}</div>
             </div>
 
-            {order && (
-              <div style={{ background: `${selectedCrypto?.color}10`, border: `1px solid ${selectedCrypto?.color}33`, borderRadius: '10px', padding: '10px 12px', marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: '#9ca3af', fontSize: '12px' }}>Amount to send</span>
-                <span style={{ color: selectedCrypto?.color, fontWeight: 800, fontSize: '16px' }}>${order.price?.toLocaleString()} USD</span>
-              </div>
-            )}
+            <div style={{ background: `${selectedCrypto?.color}10`, border: `1px solid ${selectedCrypto?.color}33`, borderRadius: '10px', padding: '10px 12px', marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ color: '#9ca3af', fontSize: '12px' }}>Amount to send</span>
+              <span style={{ color: selectedCrypto?.color, fontWeight: 800, fontSize: '16px' }}>${displayPrice?.toLocaleString()} USD</span>
+            </div>
 
             <div>
               <label style={{ color: '#6b7280', fontSize: '10px', display: 'block', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
@@ -317,7 +354,7 @@ export default function PaymentSubmit() {
             <div style={{ background: '#6366f110', border: '1px solid #6366f133', borderRadius: '10px', padding: '10px 12px', marginBottom: '14px' }}>
               <div style={{ color: '#818cf8', fontWeight: 700, fontSize: '12px', marginBottom: '4px' }}>📋 Instructions</div>
               <div style={{ color: '#9ca3af', fontSize: '11px', lineHeight: 1.6 }}>
-                1. Purchase a gift card worth <strong style={{ color: '#fff' }}>${order?.price?.toLocaleString() || '—'} USD</strong><br />
+                1. Purchase a gift card worth <strong style={{ color: '#fff' }}>${displayPrice?.toLocaleString() || '—'} USD</strong><br />
                 2. Upload a photo of the card <strong style={{ color: '#fff' }}>(required)</strong><br />
                 3. Enter the card code below <strong style={{ color: '#6b7280' }}>(optional)</strong>
               </div>
