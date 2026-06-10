@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore'
 import { db } from '../../firebase/config'
-import { MARKETPLACE_LISTINGS, TIERS, IP_TYPES, REGIONS, TIER_ORDER } from '../../data/marketplaceData'
+import { SHUFFLED_LISTINGS, TIERS, IP_TYPES, REGIONS, TIER_ORDER } from '../../data/marketplaceData'
 
 const FLAG = code => `https://flagcdn.com/24x18/${code?.toLowerCase()}.png`
 
@@ -16,11 +16,11 @@ const availColor = (available, total) => {
 
 // ── IP Card ───────────────────────────────────────────────────────────────────
 function IPCard({ listing, onBuy, customPrices }) {
-  const tier     = TIERS[listing.tier]
-  const ipType   = IP_TYPES.find(t => t.id === listing.ipType)
-  const avail    = availColor(listing.available, listing.total)
-  const pct      = Math.round((listing.available / listing.total) * 100)
-  const price    = customPrices?.[listing.tier] || tier.price
+  const tier      = TIERS[listing.tier]
+  const ipType    = IP_TYPES.find(t => t.id === listing.ipType)
+  const avail     = availColor(listing.available, listing.total)
+  const pct       = Math.round((listing.available / listing.total) * 100)
+  const price     = customPrices?.[listing.tier] || tier.price
   const hasCustom = customPrices?.[listing.tier] && customPrices[listing.tier] !== tier.price
 
   return (
@@ -85,9 +85,7 @@ function IPCard({ listing, onBuy, customPrices }) {
           <div style={{ color: '#6b7280', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Price/mo</div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
             <div style={{ color: '#fff', fontSize: '20px', fontWeight: 900 }}>${price.toLocaleString()}</div>
-            {hasCustom && (
-              <div style={{ color: '#22c55e', fontSize: '9px', fontWeight: 700 }}>✨ Special</div>
-            )}
+            {hasCustom && <div style={{ color: '#22c55e', fontSize: '9px', fontWeight: 700 }}>✨ Special</div>}
           </div>
           {hasCustom && (
             <div style={{ color: '#4b5563', fontSize: '9px', textDecoration: 'line-through' }}>${tier.price.toLocaleString()}</div>
@@ -113,15 +111,15 @@ function IPCard({ listing, onBuy, customPrices }) {
 
 // ── Buy Modal ─────────────────────────────────────────────────────────────────
 function BuyModal({ listing, onClose, onConfirm, loading, customPrices }) {
-  const tier     = TIERS[listing.tier]
-  const ipType   = IP_TYPES.find(t => t.id === listing.ipType)
-  const price    = customPrices?.[listing.tier] || tier.price
+  const tier      = TIERS[listing.tier]
+  const ipType    = IP_TYPES.find(t => t.id === listing.ipType)
+  const price     = customPrices?.[listing.tier] || tier.price
   const hasCustom = customPrices?.[listing.tier] && customPrices[listing.tier] !== tier.price
 
   return (
     <div
       onClick={e => e.target === e.currentTarget && onClose()}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1000, padding: '0' }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1000 }}
     >
       <div style={{
         background: 'linear-gradient(160deg,#13131f,#0d0d18)',
@@ -129,14 +127,12 @@ function BuyModal({ listing, onClose, onConfirm, loading, customPrices }) {
         borderRadius: '20px 20px 0 0',
         width: '100%', maxWidth: '500px',
         maxHeight: '92vh', overflowY: 'auto',
-        boxShadow: `0 -8px 40px #000000aa`,
+        boxShadow: '0 -8px 40px #000000aa',
       }}>
-        {/* Handle */}
         <div style={{ display: 'flex', justifyContent: 'center', padding: '12px 0 4px' }}>
           <div style={{ width: '36px', height: '4px', borderRadius: '99px', background: '#ffffff20' }} />
         </div>
 
-        {/* Header */}
         <div style={{ padding: '12px 20px 16px', borderBottom: '1px solid #ffffff0a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <div style={{ color: '#fff', fontWeight: 800, fontSize: '16px' }}>Order Summary</div>
@@ -146,7 +142,6 @@ function BuyModal({ listing, onClose, onConfirm, loading, customPrices }) {
         </div>
 
         <div style={{ padding: '16px 20px' }}>
-          {/* Location row */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#ffffff06', border: '1px solid #ffffff0d', borderRadius: '12px', padding: '12px', marginBottom: '12px' }}>
             <img src={FLAG(listing.countryCode)} alt="" style={{ borderRadius: '2px' }} onError={e => { e.target.style.display = 'none' }} />
             <div style={{ flex: 1 }}>
@@ -158,7 +153,6 @@ function BuyModal({ listing, onClose, onConfirm, loading, customPrices }) {
             </div>
           </div>
 
-          {/* Specs */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
             {[
               { label: 'Trust Score', value: tier.trustScore },
@@ -173,7 +167,6 @@ function BuyModal({ listing, onClose, onConfirm, loading, customPrices }) {
             ))}
           </div>
 
-          {/* Features */}
           <div style={{ marginBottom: '14px' }}>
             <div style={{ color: '#6b7280', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '7px' }}>Included</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
@@ -186,7 +179,6 @@ function BuyModal({ listing, onClose, onConfirm, loading, customPrices }) {
             </div>
           </div>
 
-          {/* Price */}
           <div style={{ background: `${tier.color}10`, border: `1px solid ${tier.color}33`, borderRadius: '12px', padding: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <div>
               <div style={{ color: '#9ca3af', fontSize: '11px' }}>Total due</div>
@@ -206,7 +198,6 @@ function BuyModal({ listing, onClose, onConfirm, loading, customPrices }) {
             </div>
           </div>
 
-          {/* Buttons */}
           <div style={{ display: 'flex', gap: '10px', paddingBottom: 'env(safe-area-inset-bottom)' }}>
             <button onClick={onClose} style={{ flex: 1, background: '#ffffff0a', border: '1px solid #ffffff15', color: '#9ca3af', borderRadius: '12px', padding: '13px', cursor: 'pointer', fontWeight: 600, fontSize: '14px' }}>
               Cancel
@@ -241,7 +232,6 @@ export default function Marketplace() {
   const [showFilters,    setShowFilters]    = useState(false)
   const [customPrices,   setCustomPrices]   = useState(null)
 
-  // Load custom prices for this user
   useEffect(() => {
     if (!user?.uid) return
     const load = async () => {
@@ -262,7 +252,7 @@ export default function Marketplace() {
   const toggleType = id => setSelectedTypes(p => p.includes(id) ? p.filter(t => t !== id) : [...p, id])
 
   const filtered = useMemo(() => {
-    let list = [...MARKETPLACE_LISTINGS]
+    let list = [...SHUFFLED_LISTINGS]
     if (search.trim()) {
       const q = search.toLowerCase()
       list = list.filter(l => l.city.toLowerCase().includes(q) || l.country.toLowerCase().includes(q) || l.region.toLowerCase().includes(q))
@@ -274,7 +264,7 @@ export default function Marketplace() {
     list.sort((a, b) => {
       if (sortBy === 'featured') {
         if (a.featured !== b.featured) return a.featured ? -1 : 1
-        return TIER_ORDER.indexOf(b.tier) - TIER_ORDER.indexOf(a.tier)
+        return 0
       }
       if (sortBy === 'price-asc')    return (customPrices?.[a.tier] || TIERS[a.tier].price) - (customPrices?.[b.tier] || TIERS[b.tier].price)
       if (sortBy === 'price-desc')   return (customPrices?.[b.tier] || TIERS[b.tier].price) - (customPrices?.[a.tier] || TIERS[a.tier].price)
@@ -317,14 +307,10 @@ export default function Marketplace() {
   return (
     <div style={{ minHeight: '100vh', background: '#080810', color: '#fff', fontFamily: "'Inter','Segoe UI',sans-serif" }}>
 
-      {/* Header */}
       <div style={{ padding: '14px 16px 12px', background: 'linear-gradient(180deg,#0d0d20,#080810)', borderBottom: '1px solid #ffffff08' }}>
         <div style={{ color: '#4b5563', fontSize: '11px', marginBottom: '6px' }}>Marketplace</div>
         <h1 style={{ color: '#fff', fontSize: '20px', fontWeight: 900, margin: '0 0 12px', letterSpacing: '-0.5px' }}>IP Marketplace</h1>
 
-      
-
-        {/* Search row */}
         <div style={{ display: 'flex', gap: '8px' }}>
           <div style={{ position: 'relative', flex: 1 }}>
             <span style={{ position: 'absolute', left: '11px', top: '50%', transform: 'translateY(-50%)', color: '#4b5563', fontSize: '13px', pointerEvents: 'none' }}>🔍</span>
@@ -349,7 +335,6 @@ export default function Marketplace() {
           </button>
         </div>
 
-        {/* Tier quick-select */}
         <div style={{ display: 'flex', gap: '6px', marginTop: '10px', overflowX: 'auto', paddingBottom: '2px' }}>
           {TIER_ORDER.map(id => {
             const t      = TIERS[id]
@@ -371,7 +356,6 @@ export default function Marketplace() {
         </div>
       </div>
 
-      {/* Filter drawer */}
       {showFilters && (
         <div style={{ background: '#0d0d1a', borderBottom: '1px solid #ffffff08', padding: '14px 16px' }}>
           <div style={{ color: '#6b7280', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>Region</div>
@@ -404,14 +388,12 @@ export default function Marketplace() {
         </div>
       )}
 
-      {/* Success toast */}
       {successMsg && (
         <div style={{ background: '#22c55e18', border: '1px solid #22c55e44', color: '#4ade80', padding: '10px 16px', fontSize: '12px', fontWeight: 600 }}>
           ✓ {successMsg}
         </div>
       )}
 
-      {/* Results */}
       <div style={{ padding: '14px 16px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
           <span style={{ color: '#6b7280', fontSize: '12px' }}>
