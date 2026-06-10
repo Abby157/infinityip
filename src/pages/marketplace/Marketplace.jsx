@@ -322,13 +322,7 @@ export default function Marketplace() {
         <div style={{ color: '#4b5563', fontSize: '11px', marginBottom: '6px' }}>Marketplace</div>
         <h1 style={{ color: '#fff', fontSize: '20px', fontWeight: 900, margin: '0 0 12px', letterSpacing: '-0.5px' }}>IP Marketplace</h1>
 
-        {/* Custom price notice */}
-        {customPrices && (
-          <div style={{ background: '#22c55e10', border: '1px solid #22c55e33', borderRadius: '8px', padding: '8px 12px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '12px' }}>✨</span>
-            <span style={{ color: '#4ade80', fontSize: '11px', fontWeight: 600 }}>You have special pricing applied</span>
-          </div>
-        )}
+      
 
         {/* Search row */}
         <div style={{ display: 'flex', gap: '8px' }}>
