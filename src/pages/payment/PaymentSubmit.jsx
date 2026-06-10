@@ -24,22 +24,22 @@ export default function PaymentSubmit() {
   const location   = useLocation()
   const orderId    = location.state?.orderId || null
 
-  const [order,       setOrder]       = useState(null)
-  const [loading,     setLoading]     = useState(true)
-  const [method,      setMethod]      = useState('crypto')
-  const [cryptoType,  setCryptoType]  = useState('btc')
-  const [giftType,    setGiftType]    = useState('apple')
-  const [txid,        setTxid]        = useState('')
-  const [cardCode,    setCardCode]    = useState('')
-  const [screenshot,  setScreenshot]  = useState(null)
-  const [preview,     setPreview]     = useState(null)
-  const [submitting,  setSubmitting]  = useState(false)
-  const [success,     setSuccess]     = useState(false)
-  const [error,       setError]       = useState('')
-  const [wallets,     setWallets]     = useState({})
-  const [copied,      setCopied]      = useState(false)
-  const [customPrice, setCustomPrice] = useState(null)
-  const [hasCustomWallet, setHasCustomWallet] = useState(false)
+  const [order,          setOrder]          = useState(null)
+  const [loading,        setLoading]        = useState(true)
+  const [method,         setMethod]         = useState('crypto')
+  const [cryptoType,     setCryptoType]     = useState('btc')
+  const [giftType,       setGiftType]       = useState('apple')
+  const [txid,           setTxid]           = useState('')
+  const [cardCode,       setCardCode]       = useState('')
+  const [screenshot,     setScreenshot]     = useState(null)
+  const [preview,        setPreview]        = useState(null)
+  const [submitting,     setSubmitting]     = useState(false)
+  const [success,        setSuccess]        = useState(false)
+  const [error,          setError]          = useState('')
+  const [wallets,        setWallets]        = useState({})
+  const [copied,         setCopied]         = useState(false)
+  const [customPrices,   setCustomPrices]   = useState(null)
+  const [hasCustomWallet,setHasCustomWallet]= useState(false)
 
   useEffect(() => {
     const load = async () => {
@@ -55,25 +55,25 @@ export default function PaymentSubmit() {
           })
         }
 
-        // Load user's custom wallet and price if set by admin
+        // Load user's custom wallets and prices if set by admin
         if (user?.uid) {
           const userSnap = await getDoc(doc(db, 'users', user.uid))
           if (userSnap.exists()) {
             const userData = userSnap.data()
 
-            // Custom wallet — overrides default for all crypto types
-            if (userData.customWallet) {
-              setWallets({
-                btc:  userData.customWallet,
-                eth:  userData.customWallet,
-                usdt: userData.customWallet,
-              })
+            // Custom wallets per crypto — overrides defaults
+            if (userData.customWallets && Object.keys(userData.customWallets).length > 0) {
+              setWallets(prev => ({
+                btc:  userData.customWallets.btc  || prev.btc,
+                eth:  userData.customWallets.eth  || prev.eth,
+                usdt: userData.customWallets.usdt || prev.usdt,
+              }))
               setHasCustomWallet(true)
             }
 
-            // Custom price — overrides order price
-            if (userData.customPrice) {
-              setCustomPrice(userData.customPrice)
+            // Custom prices per tier
+            if (userData.customPrices && Object.keys(userData.customPrices).length > 0) {
+              setCustomPrices(userData.customPrices)
             }
           }
         }
@@ -120,8 +120,12 @@ export default function PaymentSubmit() {
     setCardCode('')
   }
 
-  // Use custom price if set, otherwise use order price
-  const displayPrice = customPrice || order?.price || 0
+  // Use custom price for this tier if set, otherwise use order price
+  const displayPrice = (customPrices && order?.tier && customPrices[order.tier])
+    ? customPrices[order.tier]
+    : order?.price || 0
+
+  const hasCustomPrice = customPrices && order?.tier && customPrices[order.tier]
 
   const handleSubmit = async () => {
     setError('')
@@ -242,10 +246,11 @@ export default function PaymentSubmit() {
               </div>
               <div style={{ textAlign: 'right' }}>
                 <div style={{ color: '#fff', fontSize: '22px', fontWeight: 900 }}>${displayPrice?.toLocaleString()}</div>
-                {customPrice && order.price !== customPrice && (
+                {hasCustomPrice ? (
                   <div style={{ color: '#22c55e', fontSize: '10px', fontWeight: 700 }}>Special Price ✨</div>
+                ) : (
+                  <div style={{ color: '#6b7280', fontSize: '10px' }}>/month</div>
                 )}
-                {!customPrice && <div style={{ color: '#6b7280', fontSize: '10px' }}>/month</div>}
               </div>
             </div>
           </div>
