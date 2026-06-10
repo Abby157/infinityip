@@ -1,7 +1,7 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
+import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore'
 import { db } from '../../firebase/config'
 import { MARKETPLACE_LISTINGS, TIERS, IP_TYPES, REGIONS, TIER_ORDER } from '../../data/marketplaceData'
 
@@ -15,11 +15,13 @@ const availColor = (available, total) => {
 }
 
 // ── IP Card ───────────────────────────────────────────────────────────────────
-function IPCard({ listing, onBuy }) {
-  const tier   = TIERS[listing.tier]
-  const ipType = IP_TYPES.find(t => t.id === listing.ipType)
-  const avail  = availColor(listing.available, listing.total)
-  const pct    = Math.round((listing.available / listing.total) * 100)
+function IPCard({ listing, onBuy, customPrices }) {
+  const tier     = TIERS[listing.tier]
+  const ipType   = IP_TYPES.find(t => t.id === listing.ipType)
+  const avail    = availColor(listing.available, listing.total)
+  const pct      = Math.round((listing.available / listing.total) * 100)
+  const price    = customPrices?.[listing.tier] || tier.price
+  const hasCustom = customPrices?.[listing.tier] && customPrices[listing.tier] !== tier.price
 
   return (
     <div style={{
@@ -81,7 +83,15 @@ function IPCard({ listing, onBuy }) {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
           <div style={{ color: '#6b7280', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Price/mo</div>
-          <div style={{ color: '#fff', fontSize: '20px', fontWeight: 900 }}>${tier.price.toLocaleString()}</div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+            <div style={{ color: '#fff', fontSize: '20px', fontWeight: 900 }}>${price.toLocaleString()}</div>
+            {hasCustom && (
+              <div style={{ color: '#22c55e', fontSize: '9px', fontWeight: 700 }}>✨ Special</div>
+            )}
+          </div>
+          {hasCustom && (
+            <div style={{ color: '#4b5563', fontSize: '9px', textDecoration: 'line-through' }}>${tier.price.toLocaleString()}</div>
+          )}
         </div>
         <button
           onClick={() => onBuy(listing)}
@@ -102,9 +112,11 @@ function IPCard({ listing, onBuy }) {
 }
 
 // ── Buy Modal ─────────────────────────────────────────────────────────────────
-function BuyModal({ listing, onClose, onConfirm, loading }) {
-  const tier   = TIERS[listing.tier]
-  const ipType = IP_TYPES.find(t => t.id === listing.ipType)
+function BuyModal({ listing, onClose, onConfirm, loading, customPrices }) {
+  const tier     = TIERS[listing.tier]
+  const ipType   = IP_TYPES.find(t => t.id === listing.ipType)
+  const price    = customPrices?.[listing.tier] || tier.price
+  const hasCustom = customPrices?.[listing.tier] && customPrices[listing.tier] !== tier.price
 
   return (
     <div
@@ -178,9 +190,15 @@ function BuyModal({ listing, onClose, onConfirm, loading }) {
           <div style={{ background: `${tier.color}10`, border: `1px solid ${tier.color}33`, borderRadius: '12px', padding: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <div>
               <div style={{ color: '#9ca3af', fontSize: '11px' }}>Total due</div>
-              <div style={{ color: '#fff', fontSize: '26px', fontWeight: 900 }}>
-                ${tier.price.toLocaleString()}<span style={{ color: '#6b7280', fontSize: '12px', fontWeight: 400 }}>/mo</span>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                <div style={{ color: '#fff', fontSize: '26px', fontWeight: 900 }}>
+                  ${price.toLocaleString()}<span style={{ color: '#6b7280', fontSize: '12px', fontWeight: 400 }}>/mo</span>
+                </div>
+                {hasCustom && <span style={{ color: '#22c55e', fontSize: '11px', fontWeight: 700 }}>✨ Special Price</span>}
               </div>
+              {hasCustom && (
+                <div style={{ color: '#4b5563', fontSize: '11px', textDecoration: 'line-through' }}>Was ${tier.price.toLocaleString()}</div>
+              )}
             </div>
             <div style={{ textAlign: 'right' }}>
               <div style={{ color: '#6b7280', fontSize: '10px' }}>Slots left</div>
@@ -209,18 +227,36 @@ function BuyModal({ listing, onClose, onConfirm, loading }) {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function Marketplace() {
-  const { user } = useAuth()
+  const { user }  = useAuth()
   const navigate  = useNavigate()
-  const [search,        setSearch]        = useState('')
-  const [selectedRegion,setSelectedRegion]= useState('All')
-  const [selectedTiers, setSelectedTiers] = useState([])
-  const [selectedTypes, setSelectedTypes] = useState([])
-  const [sortBy,        setSortBy]        = useState('featured')
-  const [availOnly,     setAvailOnly]     = useState(false)
-  const [buyTarget,     setBuyTarget]     = useState(null)
-  const [orderLoading,  setOrderLoading]  = useState(false)
-  const [successMsg,    setSuccessMsg]    = useState('')
-  const [showFilters,   setShowFilters]   = useState(false)
+  const [search,         setSearch]         = useState('')
+  const [selectedRegion, setSelectedRegion] = useState('All')
+  const [selectedTiers,  setSelectedTiers]  = useState([])
+  const [selectedTypes,  setSelectedTypes]  = useState([])
+  const [sortBy,         setSortBy]         = useState('featured')
+  const [availOnly,      setAvailOnly]      = useState(false)
+  const [buyTarget,      setBuyTarget]      = useState(null)
+  const [orderLoading,   setOrderLoading]   = useState(false)
+  const [successMsg,     setSuccessMsg]     = useState('')
+  const [showFilters,    setShowFilters]    = useState(false)
+  const [customPrices,   setCustomPrices]   = useState(null)
+
+  // Load custom prices for this user
+  useEffect(() => {
+    if (!user?.uid) return
+    const load = async () => {
+      try {
+        const userSnap = await getDoc(doc(db, 'users', user.uid))
+        if (userSnap.exists()) {
+          const userData = userSnap.data()
+          if (userData.customPrices && Object.keys(userData.customPrices).length > 0) {
+            setCustomPrices(userData.customPrices)
+          }
+        }
+      } catch (err) { console.error(err) }
+    }
+    load()
+  }, [user])
 
   const toggleTier = id => setSelectedTiers(p => p.includes(id) ? p.filter(t => t !== id) : [...p, id])
   const toggleType = id => setSelectedTypes(p => p.includes(id) ? p.filter(t => t !== id) : [...p, id])
@@ -240,27 +276,34 @@ export default function Marketplace() {
         if (a.featured !== b.featured) return a.featured ? -1 : 1
         return TIER_ORDER.indexOf(b.tier) - TIER_ORDER.indexOf(a.tier)
       }
-      if (sortBy === 'price-asc')  return TIERS[a.tier].price - TIERS[b.tier].price
-      if (sortBy === 'price-desc') return TIERS[b.tier].price - TIERS[a.tier].price
+      if (sortBy === 'price-asc')    return (customPrices?.[a.tier] || TIERS[a.tier].price) - (customPrices?.[b.tier] || TIERS[b.tier].price)
+      if (sortBy === 'price-desc')   return (customPrices?.[b.tier] || TIERS[b.tier].price) - (customPrices?.[a.tier] || TIERS[a.tier].price)
       if (sortBy === 'availability') return b.available / b.total - a.available / a.total
       return 0
     })
     return list
-  }, [search, selectedRegion, selectedTiers, selectedTypes, availOnly, sortBy])
+  }, [search, selectedRegion, selectedTiers, selectedTypes, availOnly, sortBy, customPrices])
 
   const handleConfirmOrder = async (listing) => {
     if (!user) return navigate('/login')
     setOrderLoading(true)
     try {
-      const tier = TIERS[listing.tier]
+      const tier  = TIERS[listing.tier]
+      const price = customPrices?.[listing.tier] || tier.price
       await addDoc(collection(db, 'orders'), {
-        userId: user.uid, userEmail: user.email,
-        listingId: listing.id, city: listing.city,
-        country: listing.country, countryCode: listing.countryCode,
-        region: listing.region, ipType: listing.ipType,
-        tier: listing.tier, price: tier.price,
-        status: 'pending', paymentStatus: 'unpaid',
-        createdAt: serverTimestamp(),
+        userId:        user.uid,
+        userEmail:     user.email,
+        listingId:     listing.id,
+        city:          listing.city,
+        country:       listing.country,
+        countryCode:   listing.countryCode,
+        region:        listing.region,
+        ipType:        listing.ipType,
+        tier:          listing.tier,
+        price,
+        status:        'pending',
+        paymentStatus: 'unpaid',
+        createdAt:     serverTimestamp(),
       })
       setBuyTarget(null)
       setSuccessMsg(`Order placed for ${listing.city}! Go to Transactions to complete payment.`)
@@ -278,6 +321,14 @@ export default function Marketplace() {
       <div style={{ padding: '14px 16px 12px', background: 'linear-gradient(180deg,#0d0d20,#080810)', borderBottom: '1px solid #ffffff08' }}>
         <div style={{ color: '#4b5563', fontSize: '11px', marginBottom: '6px' }}>Marketplace</div>
         <h1 style={{ color: '#fff', fontSize: '20px', fontWeight: 900, margin: '0 0 12px', letterSpacing: '-0.5px' }}>IP Marketplace</h1>
+
+        {/* Custom price notice */}
+        {customPrices && (
+          <div style={{ background: '#22c55e10', border: '1px solid #22c55e33', borderRadius: '8px', padding: '8px 12px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontSize: '12px' }}>✨</span>
+            <span style={{ color: '#4ade80', fontSize: '11px', fontWeight: 600 }}>You have special pricing applied</span>
+          </div>
+        )}
 
         {/* Search row */}
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -307,8 +358,9 @@ export default function Marketplace() {
         {/* Tier quick-select */}
         <div style={{ display: 'flex', gap: '6px', marginTop: '10px', overflowX: 'auto', paddingBottom: '2px' }}>
           {TIER_ORDER.map(id => {
-            const t = TIERS[id]
+            const t      = TIERS[id]
             const active = selectedTiers.includes(id)
+            const price  = customPrices?.[id] || t.price
             return (
               <button key={id} onClick={() => toggleTier(id)} style={{
                 background: active ? `${t.color}22` : '#ffffff08',
@@ -318,7 +370,7 @@ export default function Marketplace() {
                 fontSize: '11px', fontWeight: active ? 700 : 400,
                 cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
               }}>
-                {t.label} ${t.price.toLocaleString()}
+                {t.label} ${price.toLocaleString()}
               </button>
             )
           })}
@@ -381,18 +433,25 @@ export default function Marketplace() {
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {filtered.map(listing => <IPCard key={listing.id} listing={listing} onBuy={setBuyTarget} />)}
+            {filtered.map(listing => (
+              <IPCard
+                key={listing.id}
+                listing={listing}
+                onBuy={setBuyTarget}
+                customPrices={customPrices}
+              />
+            ))}
           </div>
         )}
       </div>
 
-      {/* Buy Modal — slides up from bottom on mobile */}
       {buyTarget && (
         <BuyModal
           listing={buyTarget}
           onClose={() => setBuyTarget(null)}
           onConfirm={handleConfirmOrder}
           loading={orderLoading}
+          customPrices={customPrices}
         />
       )}
     </div>
