@@ -19,7 +19,6 @@ export default function Signup() {
   const [reseller,   setReseller]   = useState(null)
   const [refChecked, setRefChecked] = useState(false)
 
-  // Detect ?ref=CODE from URL
   useEffect(() => {
     const params = new URLSearchParams(location.search || window.location.search)
     const code   = params.get('ref')
@@ -33,14 +32,34 @@ export default function Signup() {
 
   const lookupReseller = async (code) => {
     try {
-     const q    = query(collection(db, 'resellers'), where('code', '==', code))
-     const snap = await getDocs(q)
-     if (!snap.empty) {
-       const data = { id: snap.docs[0].id, ...snap.docs[0].data() }
-       if (data.active) setReseller(data)
-    }
+      const q    = query(collection(db, 'resellers'), where('code', '==', code))
+      const snap = await getDocs(q)
+      if (!snap.empty) {
+        const data = { id: snap.docs[0].id, ...snap.docs[0].data() }
+        if (data.active) setReseller(data)
+      }
     } catch (err) { console.error(err) }
     setRefChecked(true)
+  }
+
+  const notifyReseller = async (resellerData, newName, newEmail) => {
+    if (!resellerData?.email) return
+    try {
+      await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          service_id:  'service_hlb4460',
+          template_id: 'template_qyd1v3c',
+          user_id:     't8kS5uait_n1Z8x-i',
+          template_params: {
+            to_email: resellerData.email,
+            subject:  '🎉 New user signed up with your referral link!',
+            message:  `Great news!\n\nA new user just signed up using your Infinity IP referral link.\n\nName: ${newName}\nEmail: ${newEmail}\nReferral Code: ${resellerData.code}\n\nThey now have your custom prices and payment wallet applied to their account. Once they place an order and pay, the payment will go directly to your wallet.\n\nKeep sharing your link to grow your earnings!\n\n— Infinity IP`,
+          }
+        })
+      })
+    } catch (err) { console.error('Reseller notification failed:', err) }
   }
 
   const handleSubmit = async () => {
@@ -57,7 +76,6 @@ export default function Signup() {
     try {
       const { user } = await signup(email, password)
 
-      // Build user doc — apply reseller prices and wallets if ref code used
       const userDoc = {
         uid:           user.uid,
         fullName,
@@ -68,14 +86,17 @@ export default function Signup() {
       }
 
       if (reseller) {
-        userDoc.resellerCode    = reseller.code
-        userDoc.resellerId      = reseller.id
-        userDoc.resellerName    = reseller.name
+        userDoc.resellerCode = reseller.code
+        userDoc.resellerId   = reseller.id
+        userDoc.resellerName = reseller.name
         if (reseller.prices  && Object.keys(reseller.prices).length  > 0) userDoc.customPrices  = reseller.prices
         if (reseller.wallets && Object.keys(reseller.wallets).length > 0) userDoc.customWallets = reseller.wallets
       }
 
       await setDoc(doc(db, 'users', user.uid), userDoc)
+
+      // Notify reseller by email
+      if (reseller) await notifyReseller(reseller, fullName, email)
 
       await addDoc(collection(db, 'notifications'), {
         userId:    user.uid,
@@ -118,14 +139,12 @@ export default function Signup() {
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       fontFamily: "'Inter', 'Segoe UI', sans-serif", padding: '20px',
     }}>
-      {/* Background glow */}
       <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', overflow: 'hidden' }}>
         <div style={{ position: 'absolute', top: '15%', left: '25%', width: '400px', height: '400px', borderRadius: '50%', background: 'radial-gradient(circle, #6366f115 0%, transparent 70%)' }} />
         <div style={{ position: 'absolute', bottom: '15%', right: '20%', width: '300px', height: '300px', borderRadius: '50%', background: 'radial-gradient(circle, #8b5cf610 0%, transparent 70%)' }} />
       </div>
 
       <div style={{ width: '100%', maxWidth: '420px', position: 'relative', zIndex: 1 }}>
-        {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
           <div style={{ fontSize: '28px', fontWeight: 900, letterSpacing: '-1px', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
             INFINITY IP
@@ -135,7 +154,6 @@ export default function Signup() {
           </div>
         </div>
 
-        {/* Card */}
         <div style={{ background: 'linear-gradient(160deg, #13131f 0%, #0d0d18 100%)', border: '1px solid #ffffff0d', borderRadius: '20px', padding: '32px', boxShadow: '0 24px 80px #00000060' }}>
           <div style={{ marginBottom: '24px' }}>
             <h1 style={{ color: '#fff', fontSize: '20px', fontWeight: 800, margin: 0 }}>Create your account</h1>
@@ -167,7 +185,6 @@ export default function Signup() {
             </div>
           )}
 
-          {/* Full Name */}
           <div style={{ marginBottom: '14px' }}>
             <label style={{ color: '#6b7280', fontSize: '12px', display: 'block', marginBottom: '6px' }}>Full name</label>
             <input
@@ -177,7 +194,6 @@ export default function Signup() {
             />
           </div>
 
-          {/* Email */}
           <div style={{ marginBottom: '14px' }}>
             <label style={{ color: '#6b7280', fontSize: '12px', display: 'block', marginBottom: '6px' }}>Email address</label>
             <input
@@ -187,7 +203,6 @@ export default function Signup() {
             />
           </div>
 
-          {/* Password */}
           <div style={{ marginBottom: '14px' }}>
             <label style={{ color: '#6b7280', fontSize: '12px', display: 'block', marginBottom: '6px' }}>Password</label>
             <div style={{ position: 'relative' }}>
@@ -210,7 +225,6 @@ export default function Signup() {
             )}
           </div>
 
-          {/* Confirm Password */}
           <div style={{ marginBottom: '22px' }}>
             <label style={{ color: '#6b7280', fontSize: '12px', display: 'block', marginBottom: '6px' }}>Confirm password</label>
             <input
@@ -224,7 +238,6 @@ export default function Signup() {
             )}
           </div>
 
-          {/* Submit */}
           <button
             onClick={handleSubmit} disabled={loading}
             style={{ width: '100%', background: loading ? '#6366f150' : 'linear-gradient(135deg, #6366f1, #8b5cf6)', border: 'none', borderRadius: '10px', padding: '13px', color: '#fff', fontWeight: 800, fontSize: '15px', cursor: loading ? 'not-allowed' : 'pointer', transition: 'all 0.2s' }}
