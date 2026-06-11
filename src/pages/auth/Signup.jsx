@@ -21,7 +21,7 @@ export default function Signup() {
 
   // Detect ?ref=CODE from URL
   useEffect(() => {
-    const params = new URLSearchParams(location.search)
+    const params = new URLSearchParams(location.search || window.location.search)
     const code   = params.get('ref')
     if (code) {
       setRefCode(code.toUpperCase())
