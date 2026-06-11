@@ -9,6 +9,7 @@ import SupportTickets from './support/SupportTickets'
 import SiteSettings from './settings/SiteSettings'
 import PaymentHistory from './payments/PaymentHistory'
 import Newsletter from './newsletter/Newsletter'
+import Resellers from './resellers/Resellers'
 
 const NAV = [
   { id: 'dashboard',   label: 'Dashboard',   icon: '⊞' },
@@ -18,7 +19,9 @@ const NAV = [
   { id: 'users',       label: 'Users',        icon: '👥' },
   { id: 'tickets',     label: 'Tickets',      icon: '💬' },
   { id: 'newsletter',  label: 'Newsletter',   icon: '📧' },
+  { id: 'resellers', label: 'Resellers', icon: '🤝' },
   { id: 'settings',    label: 'Settings',     icon: '⚙️' },
+
 ]
 
 export default function AdminPanel() {
@@ -40,6 +43,7 @@ export default function AdminPanel() {
       case 'users':      return <Users />
       case 'tickets':    return <SupportTickets />
       case 'newsletter': return <Newsletter />
+      case 'resellers': return <Resellers />
       case 'settings':   return <SiteSettings />
       default:           return <AdminDashboard />
     }
