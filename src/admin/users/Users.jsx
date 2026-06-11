@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import {
   collection, getDocs, query, orderBy,
-  doc, updateDoc, serverTimestamp, addDoc
+  doc, updateDoc, serverTimestamp, addDoc, deleteDoc
 } from 'firebase/firestore'
 import { db } from '../../firebase/config'
+import { useAuth } from '../../contexts/AuthContext'
 
 const ADMIN_EMAIL = 'davehack966@gmail.com'
 
@@ -21,6 +22,7 @@ const CRYPTOS = [
 ]
 
 export default function Users() {
+  const { user: adminUser }  = useAuth()
   const [users,        setUsers]        = useState([])
   const [orders,       setOrders]       = useState([])
   const [loading,      setLoading]      = useState(true)
@@ -158,6 +160,35 @@ export default function Users() {
       setSelected(prev => prev?.id === user.id ? { ...prev, suspended } : prev)
       showToast(suspended ? '🚫 User suspended' : '✅ User reactivated')
     } catch (err) { console.error(err) }
+    setActing(false)
+  }
+
+  const deleteUser = async (user) => {
+    if (!window.confirm(`Permanently delete ${user.fullName || user.email}? They will not be able to login again.`)) return
+    setActing(true)
+    try {
+      // Delete from Firebase Auth via API
+      const uid = user.uid || user.id
+      const res = await fetch('/api/delete-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uid, adminEmail: adminUser?.email }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || 'Failed to delete from Auth')
+      }
+
+      // Delete from Firestore
+      await deleteDoc(doc(db, 'users', user.id))
+
+      setUsers(prev => prev.filter(u => u.id !== user.id))
+      setSelected(null)
+      showToast('✅ User permanently deleted')
+    } catch (err) {
+      console.error(err)
+      showToast('❌ Delete failed: ' + err.message)
+    }
     setActing(false)
   }
 
@@ -333,9 +364,7 @@ export default function Users() {
             {/* Custom prices per tier */}
             <div style={{ marginBottom: '14px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <label style={{ color: '#6b7280', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  Custom Prices per Tier
-                </label>
+                <label style={{ color: '#6b7280', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Custom Prices per Tier</label>
                 {hasCustomPrices(selected) && (
                   <button onClick={() => clearCustomPrices(selected)} disabled={acting} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '10px', cursor: 'pointer', padding: 0 }}>
                     ✕ Clear all
@@ -373,9 +402,7 @@ export default function Users() {
             {/* Custom wallets per crypto */}
             <div style={{ marginBottom: '14px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <label style={{ color: '#6b7280', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  Custom Wallets per Crypto
-                </label>
+                <label style={{ color: '#6b7280', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Custom Wallets per Crypto</label>
                 {hasCustomWallets(selected) && (
                   <button onClick={() => clearCustomWallets(selected)} disabled={acting} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '10px', cursor: 'pointer', padding: 0 }}>
                     ✕ Clear all
@@ -423,11 +450,16 @@ export default function Users() {
               </button>
             </div>
 
-            {/* Suspend */}
+            {/* Suspend / Delete */}
             {selected.email !== ADMIN_EMAIL && (
-              <button onClick={() => toggleSuspend(selected)} disabled={acting} style={{ width: '100%', background: selected.suspended ? '#22c55e18' : '#ef444418', border: `1px solid ${selected.suspended ? '#22c55e33' : '#ef444433'}`, color: selected.suspended ? '#4ade80' : '#f87171', borderRadius: '8px', padding: '9px', cursor: acting ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '12px' }}>
-                {selected.suspended ? '✅ Reactivate User' : '🚫 Suspend User'}
-              </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <button onClick={() => toggleSuspend(selected)} disabled={acting} style={{ width: '100%', background: selected.suspended ? '#22c55e18' : '#ef444418', border: `1px solid ${selected.suspended ? '#22c55e33' : '#ef444433'}`, color: selected.suspended ? '#4ade80' : '#f87171', borderRadius: '8px', padding: '9px', cursor: acting ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '12px' }}>
+                  {selected.suspended ? '✅ Reactivate User' : '🚫 Suspend User'}
+                </button>
+                <button onClick={() => deleteUser(selected)} disabled={acting} style={{ width: '100%', background: '#7f1d1d33', border: '1px solid #ef444455', color: '#fca5a5', borderRadius: '8px', padding: '9px', cursor: acting ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '12px' }}>
+                  🗑️ Delete User Permanently
+                </button>
+              </div>
             )}
           </div>
         )}
