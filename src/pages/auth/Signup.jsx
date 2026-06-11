@@ -33,11 +33,12 @@ export default function Signup() {
 
   const lookupReseller = async (code) => {
     try {
-      const q    = query(collection(db, 'resellers'), where('code', '==', code), where('active', '==', true))
-      const snap = await getDocs(q)
-      if (!snap.empty) {
-        setReseller({ id: snap.docs[0].id, ...snap.docs[0].data() })
-      }
+     const q    = query(collection(db, 'resellers'), where('code', '==', code))
+     const snap = await getDocs(q)
+     if (!snap.empty) {
+       const data = { id: snap.docs[0].id, ...snap.docs[0].data() }
+       if (data.active) setReseller(data)
+    }
     } catch (err) { console.error(err) }
     setRefChecked(true)
   }
