@@ -3,6 +3,7 @@ import { useNavigate, Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { doc, setDoc, addDoc, collection, serverTimestamp, getDocs, query, where } from 'firebase/firestore'
 import { db } from '../../firebase/config'
+import { sendWelcomeEmail } from '../../services/emailService'
 
 export default function Signup() {
   const { signup }   = useAuth()
@@ -97,6 +98,11 @@ export default function Signup() {
 
       // Notify reseller by email
       if (reseller) await notifyReseller(reseller, fullName, email)
+
+      // Send welcome email to new user
+      try {
+        await sendWelcomeEmail({ toEmail: email, toName: fullName })
+      } catch (err) { console.error('Welcome email failed:', err) }
 
       await addDoc(collection(db, 'notifications'), {
         userId:    user.uid,
