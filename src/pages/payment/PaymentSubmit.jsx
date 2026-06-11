@@ -256,13 +256,7 @@ export default function PaymentSubmit() {
           </div>
         )}
 
-        {/* Custom wallet notice */}
-        {hasCustomWallet && (
-          <div style={{ background: '#22c55e10', border: '1px solid #22c55e33', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '14px' }}>✨</span>
-            <span style={{ color: '#4ade80', fontSize: '12px', fontWeight: 600 }}>You have a dedicated payment address</span>
-          </div>
-        )}
+      
 
         {/* Method toggle */}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
