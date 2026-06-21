@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { collection, getDocs, query, orderBy, doc, updateDoc, serverTimestamp, addDoc } from 'firebase/firestore'
+import { collection, getDocs, query, orderBy, doc, getDoc, updateDoc, serverTimestamp, addDoc } from 'firebase/firestore'
 import { db } from '../../firebase/config'
 import { sendIPApprovedEmail, sendIPRejectedEmail } from '../../services/emailService'
 
@@ -50,6 +50,24 @@ export default function PaymentHistory() {
   const approve = async (payment) => {
     setActing(true)
     try {
+      // Guard — check if the linked order is already active to prevent duplicate IP/email
+      if (payment.orderId) {
+        const orderSnap = await getDoc(doc(db, 'orders', payment.orderId))
+        if (orderSnap.exists() && orderSnap.data().status === 'active') {
+          // Order already approved elsewhere — just sync payment status, no new IP/email
+          await updateDoc(doc(db, 'payments', payment.id), {
+            status:     'approved',
+            approvedAt: serverTimestamp(),
+            note:       'Order was already active — synced without duplicate email',
+          })
+          setPayments(prev => prev.map(p => p.id === payment.id ? { ...p, status: 'approved' } : p))
+          setSelected(null)
+          showToast('✅ Synced — order was already approved elsewhere, no duplicate email sent')
+          setActing(false)
+          return
+        }
+      }
+
       const ip = generateIP()
       const expiryDate = new Date()
       expiryDate.setDate(expiryDate.getDate() + 30)

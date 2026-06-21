@@ -30,7 +30,6 @@ export default function Orders() {
   const [selected, setSelected] = useState(null)
   const [acting,   setActing]   = useState(false)
   const [toast,    setToast]    = useState('')
-  const [newIP,    setNewIP]    = useState('')
 
   useEffect(() => { load() }, [])
 
@@ -46,32 +45,28 @@ export default function Orders() {
 
   const showToast = msg => { setToast(msg); setTimeout(() => setToast(''), 3000) }
 
-  const updateStatus = async (order, status) => {
+  // Orders.jsx only handles marking expired — approval/rejection happens in Payments tab
+  const markExpired = async (order) => {
     setActing(true)
     try {
-      const updates = { status, updatedAt: serverTimestamp() }
-      if (status === 'active' && newIP.trim()) updates.ipAddress = newIP.trim()
-      if (status === 'expired') updates.expiredAt = serverTimestamp()
-      await updateDoc(doc(db, 'orders', order.id), updates)
+      await updateDoc(doc(db, 'orders', order.id), {
+        status:    'expired',
+        expiredAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      })
 
-      // Notify user
-      const messages = {
-        active:  { title: 'IP Activated ✅', msg: `Your ${order.tier?.toUpperCase()} IP in ${order.city} is now active.` },
-        expired: { title: 'IP Expired',      msg: `Your IP in ${order.city} has expired. Renew to continue.` },
-        rejected:{ title: 'Order Rejected',  msg: `Your order for ${order.city} has been rejected.` },
-      }
-      if (messages[status]) {
-        await addDoc(collection(db, 'notifications'), {
-          userId: order.userId, type: 'order',
-          title: messages[status].title, message: messages[status].msg,
-          read: false, createdAt: serverTimestamp(),
-        })
-      }
+      await addDoc(collection(db, 'notifications'), {
+        userId:    order.userId,
+        type:      'order',
+        title:     'IP Expired',
+        message:   `Your IP in ${order.city} has expired. Renew to continue.`,
+        read:      false,
+        createdAt: serverTimestamp(),
+      })
 
-      setOrders(prev => prev.map(o => o.id === order.id ? { ...o, ...updates } : o))
-      setSelected(prev => prev?.id === order.id ? { ...prev, ...updates } : prev)
-      setNewIP('')
-      showToast(`Order updated to ${status}`)
+      setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'expired' } : o))
+      setSelected(prev => prev?.id === order.id ? { ...prev, status: 'expired' } : prev)
+      showToast(`Order marked expired`)
     } catch (err) { console.error(err) }
     setActing(false)
   }
@@ -215,41 +210,31 @@ export default function Orders() {
               )}
             </div>
 
-            {/* Assign IP input */}
-            {selected.status !== 'active' && (
-              <div style={{ marginBottom: '10px' }}>
-                <label style={{ color: '#6b7280', fontSize: '10px', display: 'block', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Assign Custom IP (optional)</label>
-                <input
-                  value={newIP} onChange={e => setNewIP(e.target.value)}
-                  placeholder="e.g. 192.168.1.100"
-                  style={{ width: '100%', background: '#ffffff08', border: '1px solid #ffffff12', borderRadius: '8px', padding: '9px 12px', color: '#fff', fontSize: '12px', outline: 'none', boxSizing: 'border-box', fontFamily: 'monospace' }}
-                />
+            {/* Pending/under review notice — redirect to Payments */}
+            {(selected.status === 'pending' || selected.status === 'under_review') && (
+              <div style={{ background: '#6366f110', border: '1px solid #6366f133', borderRadius: '10px', padding: '12px', textAlign: 'center', color: '#818cf8', fontSize: '12px', fontWeight: 600, lineHeight: 1.5 }}>
+                ℹ️ To approve or reject this order, go to the <strong>Payments</strong> tab. This keeps IP generation and emails consistent.
               </div>
             )}
 
-            {/* Action buttons */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '7px' }}>
-              {selected.status !== 'active' && (
-                <button onClick={() => updateStatus(selected, 'active')} disabled={acting} style={{ background: 'linear-gradient(135deg,#22c55e,#16a34a)', border: 'none', color: '#fff', borderRadius: '8px', padding: '9px', cursor: acting ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '12px' }}>
-                  ✅ Set Active
-                </button>
-              )}
-              {selected.status !== 'under_review' && selected.status !== 'active' && (
-                <button onClick={() => updateStatus(selected, 'under_review')} disabled={acting} style={{ background: '#6366f118', border: '1px solid #6366f133', color: '#818cf8', borderRadius: '8px', padding: '9px', cursor: acting ? 'not-allowed' : 'pointer', fontWeight: 600, fontSize: '12px' }}>
-                  🔍 Set Under Review
-                </button>
-              )}
-              {selected.status === 'active' && (
-                <button onClick={() => updateStatus(selected, 'expired')} disabled={acting} style={{ background: '#6b728018', border: '1px solid #6b728033', color: '#9ca3af', borderRadius: '8px', padding: '9px', cursor: acting ? 'not-allowed' : 'pointer', fontWeight: 600, fontSize: '12px' }}>
-                  ⏰ Mark Expired
-                </button>
-              )}
-              {selected.status !== 'rejected' && selected.status !== 'active' && (
-                <button onClick={() => updateStatus(selected, 'rejected')} disabled={acting} style={{ background: '#ef444418', border: '1px solid #ef444433', color: '#f87171', borderRadius: '8px', padding: '9px', cursor: acting ? 'not-allowed' : 'pointer', fontWeight: 600, fontSize: '12px' }}>
-                  ❌ Reject
-                </button>
-              )}
-            </div>
+            {/* Mark expired — only for active orders */}
+            {selected.status === 'active' && (
+              <button onClick={() => markExpired(selected)} disabled={acting} style={{ width: '100%', background: '#6b728018', border: '1px solid #6b728033', color: '#9ca3af', borderRadius: '8px', padding: '9px', cursor: acting ? 'not-allowed' : 'pointer', fontWeight: 600, fontSize: '12px' }}>
+                ⏰ Mark Expired
+              </button>
+            )}
+
+            {selected.status === 'rejected' && (
+              <div style={{ background: '#ef444410', border: '1px solid #ef444433', borderRadius: '10px', padding: '12px', textAlign: 'center', color: '#f87171', fontSize: '13px', fontWeight: 600 }}>
+                ❌ This order has been rejected
+              </div>
+            )}
+
+            {selected.status === 'expired' && (
+              <div style={{ background: '#6b728010', border: '1px solid #6b728033', borderRadius: '10px', padding: '12px', textAlign: 'center', color: '#9ca3af', fontSize: '13px', fontWeight: 600 }}>
+                ⏰ This order has expired
+              </div>
+            )}
           </div>
         )}
       </div>
