@@ -5,6 +5,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../../firebase/config'
 import { useAuth } from '../../contexts/AuthContext'
+import { sendNewsletterEmail } from '../../services/emailService'
 
 const ADMIN_EMAIL = 'davehack966@gmail.com'
 
@@ -32,6 +33,8 @@ export default function Users() {
   const [toast,        setToast]        = useState('')
   const [walletAmt,    setWalletAmt]    = useState('')
   const [notifMsg,     setNotifMsg]     = useState('')
+  const [emailSubject, setEmailSubject] = useState('')
+  const [emailMsg,     setEmailMsg]     = useState('')
   const [customPrices, setCustomPrices] = useState({ low: '', standard: '', strong: '', elite: '' })
   const [customWallets,setCustomWallets]= useState({ btc: '', eth: '', usdt: '' })
 
@@ -151,6 +154,26 @@ export default function Users() {
     setActing(false)
   }
 
+  const sendEmail = async (user) => {
+    if (!emailSubject.trim() || !emailMsg.trim()) return
+    setActing(true)
+    try {
+      await sendNewsletterEmail({
+        toEmail: user.email,
+        toName:  user.fullName || user.email.split('@')[0],
+        subject: emailSubject.trim(),
+        message: emailMsg.trim(),
+      })
+      setEmailSubject('')
+      setEmailMsg('')
+      showToast(`✅ Email sent to ${user.email}`)
+    } catch (err) {
+      console.error(err)
+      showToast('❌ Email failed to send')
+    }
+    setActing(false)
+  }
+
   const toggleSuspend = async (user) => {
     setActing(true)
     try {
@@ -167,7 +190,6 @@ export default function Users() {
     if (!window.confirm(`Permanently delete ${user.fullName || user.email}? They will not be able to login again.`)) return
     setActing(true)
     try {
-      // Delete from Firebase Auth via API
       const uid = user.uid || user.id
       const res = await fetch('/api/delete-user', {
         method: 'POST',
@@ -179,7 +201,6 @@ export default function Users() {
         throw new Error(err.error || 'Failed to delete from Auth')
       }
 
-      // Delete from Firestore
       await deleteDoc(doc(db, 'users', user.id))
 
       setUsers(prev => prev.filter(u => u.id !== user.id))
@@ -254,6 +275,8 @@ export default function Users() {
                       setSelected(isSel ? null : user)
                       setWalletAmt('')
                       setNotifMsg('')
+                      setEmailSubject('')
+                      setEmailMsg('')
                       setCustomPrices({ low: '', standard: '', strong: '', elite: '' })
                       setCustomWallets({ btc: '', eth: '', usdt: '' })
                     }}
@@ -436,17 +459,40 @@ export default function Users() {
               </button>
             </div>
 
-            {/* Send notification */}
-            <div style={{ marginBottom: '12px' }}>
-              <label style={{ color: '#6b7280', fontSize: '10px', display: 'block', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Send Notification</label>
+            {/* Send in-app notification */}
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{ color: '#6b7280', fontSize: '10px', display: 'block', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Send In-App Notification</label>
               <textarea
                 value={notifMsg} onChange={e => setNotifMsg(e.target.value)}
-                placeholder="Message to send to this user…"
+                placeholder="Message to send to this user's notification bell…"
                 rows={2}
                 style={{ width: '100%', background: '#ffffff08', border: '1px solid #ffffff12', borderRadius: '8px', padding: '8px 12px', color: '#fff', fontSize: '12px', outline: 'none', boxSizing: 'border-box', resize: 'none', fontFamily: 'inherit', marginBottom: '6px' }}
               />
               <button onClick={() => sendNotification(selected)} disabled={acting || !notifMsg.trim()} style={{ width: '100%', background: '#6366f118', border: '1px solid #6366f133', color: '#818cf8', borderRadius: '8px', padding: '8px', cursor: acting ? 'not-allowed' : 'pointer', fontWeight: 600, fontSize: '12px' }}>
-                Send Notification
+                🔔 Send Notification
+              </button>
+            </div>
+
+            {/* Send individual email */}
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{ color: '#6b7280', fontSize: '10px', display: 'block', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Send Email to {selected.email}</label>
+              <input
+                value={emailSubject} onChange={e => setEmailSubject(e.target.value)}
+                placeholder="Subject…"
+                style={{ width: '100%', background: '#ffffff08', border: '1px solid #ffffff12', borderRadius: '8px', padding: '8px 12px', color: '#fff', fontSize: '12px', outline: 'none', boxSizing: 'border-box', marginBottom: '6px' }}
+              />
+              <textarea
+                value={emailMsg} onChange={e => setEmailMsg(e.target.value)}
+                placeholder="Email message…"
+                rows={3}
+                style={{ width: '100%', background: '#ffffff08', border: '1px solid #ffffff12', borderRadius: '8px', padding: '8px 12px', color: '#fff', fontSize: '12px', outline: 'none', boxSizing: 'border-box', resize: 'none', fontFamily: 'inherit', marginBottom: '6px' }}
+              />
+              <button
+                onClick={() => sendEmail(selected)}
+                disabled={acting || !emailSubject.trim() || !emailMsg.trim()}
+                style={{ width: '100%', background: 'linear-gradient(135deg,#22c55e,#16a34a)', border: 'none', color: '#fff', borderRadius: '8px', padding: '9px', cursor: acting ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '12px' }}
+              >
+                📧 Send Email
               </button>
             </div>
 
