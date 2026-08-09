@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
-import { collection, getDocs, query, orderBy, doc, getDoc, updateDoc, serverTimestamp, addDoc } from 'firebase/firestore'
+import { collection, getDocs, query, orderBy } from 'firebase/firestore'
 import { db } from '../../firebase/config'
-import { sendIPApprovedEmail, sendIPRejectedEmail } from '../../services/emailService'
 
 const STATUS_CONFIG = {
   under_review: { label: 'Under Review', color: '#6366f1', bg: '#6366f118' },
@@ -11,27 +10,12 @@ const STATUS_CONFIG = {
 
 const CRYPTO_ICONS = { BTC: '₿', ETH: 'Ξ', USDT: '₮' }
 
-const r = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min
-
-const generateIP = () => {
-  const ranges = [
-    () => `104.${r(16,31)}.${r(0,255)}.${r(1,254)}`,
-    () => `172.${r(64,95)}.${r(0,255)}.${r(1,254)}`,
-    () => `185.${r(0,255)}.${r(0,255)}.${r(1,254)}`,
-    () => `45.${r(32,63)}.${r(0,255)}.${r(1,254)}`,
-    () => `23.${r(32,95)}.${r(0,255)}.${r(1,254)}`,
-  ]
-  return ranges[Math.floor(Math.random() * ranges.length)]()
-}
-
 export default function PaymentHistory() {
-  const [payments,  setPayments]  = useState([])
-  const [loading,   setLoading]   = useState(true)
-  const [filter,    setFilter]    = useState('all')
-  const [selected,  setSelected]  = useState(null)
-  const [acting,    setActing]    = useState(false)
-  const [toast,     setToast]     = useState('')
-  const [imgModal,  setImgModal]  = useState(null)
+  const [payments, setPayments] = useState([])
+  const [loading,  setLoading]  = useState(true)
+  const [filter,   setFilter]   = useState('all')
+  const [selected, setSelected] = useState(null)
+  const [imgModal, setImgModal] = useState(null)
 
   useEffect(() => { load() }, [])
 
@@ -45,123 +29,6 @@ export default function PaymentHistory() {
     setLoading(false)
   }
 
-  const showToast = msg => { setToast(msg); setTimeout(() => setToast(''), 3000) }
-
-  const approve = async (payment) => {
-    setActing(true)
-    try {
-      // Guard — check if the linked order is already active to prevent duplicate IP/email
-      if (payment.orderId) {
-        const orderSnap = await getDoc(doc(db, 'orders', payment.orderId))
-        if (orderSnap.exists() && orderSnap.data().status === 'active') {
-          // Order already approved elsewhere — just sync payment status, no new IP/email
-          await updateDoc(doc(db, 'payments', payment.id), {
-            status:     'approved',
-            approvedAt: serverTimestamp(),
-            note:       'Order was already active — synced without duplicate email',
-          })
-          setPayments(prev => prev.map(p => p.id === payment.id ? { ...p, status: 'approved' } : p))
-          setSelected(null)
-          showToast('✅ Synced — order was already approved elsewhere, no duplicate email sent')
-          setActing(false)
-          return
-        }
-      }
-
-      const ip = generateIP()
-      const expiryDate = new Date()
-      expiryDate.setDate(expiryDate.getDate() + 30)
-      const expiryStr = expiryDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-
-      await updateDoc(doc(db, 'payments', payment.id), {
-        status:     'approved',
-        approvedAt: serverTimestamp(),
-      })
-
-      if (payment.orderId) {
-        await updateDoc(doc(db, 'orders', payment.orderId), {
-          status:          'active',
-          paymentStatus:   'paid',
-          ipAddress:       ip,
-          approvedAt:      serverTimestamp(),
-          expiryDate:      expiryDate,
-          renewalStatus:   'active',
-          expiryAlertSent: false,
-          updatedAt:       serverTimestamp(),
-        })
-      }
-
-      await addDoc(collection(db, 'notifications'), {
-        userId:    payment.userId,
-        type:      'payment',
-        title:     'Payment Approved ✅',
-        message:   `Your payment of $${payment.amount} has been approved. Your IP ${ip} is now active and expires on ${expiryStr}.`,
-        read:      false,
-        createdAt: serverTimestamp(),
-      })
-
-      await sendIPApprovedEmail({
-        toEmail:    payment.userEmail,
-        toName:     payment.userEmail?.split('@')[0],
-        ipAddress:  ip,
-        city:       payment.city    || '',
-        country:    payment.country || '',
-        tier:       payment.tier    || '',
-        expiryDate: expiryStr,
-      })
-
-      setPayments(prev => prev.map(p => p.id === payment.id ? { ...p, status: 'approved' } : p))
-      setSelected(null)
-      showToast(`✅ Payment approved — IP ${ip} assigned`)
-    } catch (err) {
-      console.error(err)
-      showToast('❌ Error approving payment')
-    }
-    setActing(false)
-  }
-
-  const reject = async (payment) => {
-    setActing(true)
-    try {
-      await updateDoc(doc(db, 'payments', payment.id), {
-        status:     'rejected',
-        rejectedAt: serverTimestamp(),
-      })
-
-      if (payment.orderId) {
-        await updateDoc(doc(db, 'orders', payment.orderId), {
-          status:    'rejected',
-          updatedAt: serverTimestamp(),
-        })
-      }
-
-      await addDoc(collection(db, 'notifications'), {
-        userId:    payment.userId,
-        type:      'alert',
-        title:     'Payment Rejected ❌',
-        message:   `Your payment of $${payment.amount} was rejected. Please contact support for assistance.`,
-        read:      false,
-        createdAt: serverTimestamp(),
-      })
-
-      await sendIPRejectedEmail({
-        toEmail: payment.userEmail,
-        toName:  payment.userEmail?.split('@')[0],
-        city:    payment.city    || '',
-        country: payment.country || '',
-        reason:  'Payment could not be verified.',
-      })
-
-      setPayments(prev => prev.map(p => p.id === payment.id ? { ...p, status: 'rejected' } : p))
-      setSelected(null)
-      showToast('❌ Payment rejected')
-    } catch (err) {
-      console.error(err)
-      showToast('❌ Error rejecting payment')
-    }
-    setActing(false)
-  }
-
   const tabs = ['all', 'under_review', 'approved', 'rejected']
   const filtered = filter === 'all' ? payments : payments.filter(p => p.status === filter)
   const pendingCount = payments.filter(p => p.status === 'under_review').length
@@ -169,17 +36,11 @@ export default function PaymentHistory() {
   return (
     <div style={{ padding: '14px 16px' }}>
 
-      {toast && (
-        <div style={{ background: '#13131f', border: '1px solid #ffffff15', borderRadius: '10px', padding: '10px 16px', marginBottom: '14px', color: '#fff', fontSize: '13px', fontWeight: 600 }}>
-          {toast}
-        </div>
-      )}
-
       {pendingCount > 0 && (
         <div style={{ background: '#6366f110', border: '1px solid #6366f133', borderRadius: '12px', padding: '11px 16px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
           <span style={{ fontSize: '15px' }}>💳</span>
           <span style={{ color: '#818cf8', fontSize: '13px', fontWeight: 600 }}>
-            {pendingCount} payment{pendingCount > 1 ? 's' : ''} waiting for review
+            {pendingCount} payment{pendingCount > 1 ? 's' : ''} waiting for review — go to <strong>Payments</strong> tab to approve or reject
           </span>
         </div>
       )}
@@ -311,28 +172,9 @@ export default function PaymentHistory() {
               </div>
             )}
 
-            {selected.status === 'under_review' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <button onClick={() => approve(selected)} disabled={acting} style={{ background: acting ? '#22c55e30' : 'linear-gradient(135deg,#22c55e,#16a34a)', border: 'none', color: '#fff', borderRadius: '10px', padding: '10px', cursor: acting ? 'not-allowed' : 'pointer', fontWeight: 800, fontSize: '13px' }}>
-                  {acting ? 'Processing…' : '✅ Approve Payment'}
-                </button>
-                <button onClick={() => reject(selected)} disabled={acting} style={{ background: '#ef444418', border: '1px solid #ef444433', color: '#f87171', borderRadius: '10px', padding: '10px', cursor: acting ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '13px' }}>
-                  ❌ Reject Payment
-                </button>
-              </div>
-            )}
-
-            {selected.status === 'approved' && (
-              <div style={{ background: '#22c55e10', border: '1px solid #22c55e33', borderRadius: '10px', padding: '12px', textAlign: 'center', color: '#4ade80', fontSize: '13px', fontWeight: 600 }}>
-                ✅ Payment approved
-              </div>
-            )}
-
-            {selected.status === 'rejected' && (
-              <div style={{ background: '#ef444410', border: '1px solid #ef444433', borderRadius: '10px', padding: '12px', textAlign: 'center', color: '#f87171', fontSize: '13px', fontWeight: 600 }}>
-                ❌ Payment rejected
-              </div>
-            )}
+            <div style={{ background: '#6366f110', border: '1px solid #6366f133', borderRadius: '10px', padding: '12px', textAlign: 'center', color: '#818cf8', fontSize: '12px', fontWeight: 600 }}>
+              📋 View-only — go to <strong>Payments</strong> tab to approve or reject
+            </div>
           </div>
         )}
       </div>
