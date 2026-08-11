@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore'
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, query, where } from 'firebase/firestore'
 import { db } from '../../firebase/config'
 
 const TIERS = [
@@ -22,15 +22,16 @@ const generateCode = (name) => {
 }
 
 export default function Resellers() {
-  const [resellers,    setResellers]    = useState([])
-  const [loading,      setLoading]      = useState(true)
-  const [selected,     setSelected]     = useState(null)
-  const [showForm,     setShowForm]     = useState(false)
-  const [acting,       setActing]       = useState(false)
-  const [toast,        setToast]        = useState('')
-  const [copied,       setCopied]       = useState('')
+  const [resellers,     setResellers]     = useState([])
+  const [loading,       setLoading]       = useState(true)
+  const [selected,      setSelected]      = useState(null)
+  const [showForm,      setShowForm]      = useState(false)
+  const [acting,        setActing]        = useState(false)
+  const [toast,         setToast]         = useState('')
+  const [copied,        setCopied]        = useState('')
+  const [linkEmail,     setLinkEmail]     = useState('')
+  const [linkingId,     setLinkingId]     = useState(null)
 
-  // Form state
   const [form, setForm] = useState({
     name:    '',
     email:   '',
@@ -47,7 +48,6 @@ export default function Resellers() {
       const snap = await getDocs(collection(db, 'resellers'))
       const data = snap.docs.map(d => ({ id: d.id, ...d.data() }))
 
-      // Count users per reseller
       const usersSnap = await getDocs(collection(db, 'users'))
       const users = usersSnap.docs.map(d => d.data())
 
@@ -92,8 +92,7 @@ export default function Resellers() {
       const prices = {}
       TIERS.forEach(t => {
         const v = parseFloat(form.prices[t.id])
-        if (!isNaN(v) && v > 0) prices[t.id] = v
-        else prices[t.id] = t.default
+        prices[t.id] = (!isNaN(v) && v > 0) ? v : t.default
       })
 
       const wallets = {}
@@ -153,11 +152,81 @@ export default function Resellers() {
     setActing(false)
   }
 
+  const linkAccount = async (reseller) => {
+    if (!linkEmail.trim()) return showToast('❌ Enter the reseller\'s login email')
+    setActing(true)
+    try {
+      // Find user by email
+      const usersSnap = await getDocs(
+        query(collection(db, 'users'), where('email', '==', linkEmail.trim().toLowerCase()))
+      )
+
+      if (usersSnap.empty) {
+        showToast('❌ No account found with that email — they need to sign up first')
+        setActing(false)
+        return
+      }
+
+      const userDoc = usersSnap.docs[0]
+
+      // Update user doc with reseller info
+      await updateDoc(doc(db, 'users', userDoc.id), {
+        resellerId:   reseller.id,
+        resellerCode: reseller.code,
+        resellerName: reseller.name,
+        role:         'reseller',
+        updatedAt:    serverTimestamp(),
+      })
+
+      // Save linked email on reseller doc
+      await updateDoc(doc(db, 'resellers', reseller.id), {
+        linkedEmail: linkEmail.trim().toLowerCase(),
+        linkedUserId: userDoc.id,
+        updatedAt:   serverTimestamp(),
+      })
+
+      setLinkEmail('')
+      setLinkingId(null)
+      showToast(`✅ Account linked! ${linkEmail} can now access Reseller Dashboard`)
+      load()
+    } catch (err) {
+      console.error(err)
+      showToast('❌ Failed to link account')
+    }
+    setActing(false)
+  }
+
+  const unlinkAccount = async (reseller) => {
+    if (!window.confirm('Unlink this account? They will lose reseller dashboard access.')) return
+    setActing(true)
+    try {
+      if (reseller.linkedUserId) {
+        await updateDoc(doc(db, 'users', reseller.linkedUserId), {
+          resellerId:   null,
+          resellerCode: null,
+          resellerName: null,
+          role:         'user',
+          updatedAt:    serverTimestamp(),
+        })
+      }
+
+      await updateDoc(doc(db, 'resellers', reseller.id), {
+        linkedEmail:  null,
+        linkedUserId: null,
+        updatedAt:    serverTimestamp(),
+      })
+
+      showToast('✅ Account unlinked')
+      load()
+    } catch (err) { console.error(err) }
+    setActing(false)
+  }
+
   const toggleActive = async (reseller) => {
     setActing(true)
     try {
       await updateDoc(doc(db, 'resellers', reseller.id), {
-        active: !reseller.active,
+        active:    !reseller.active,
         updatedAt: serverTimestamp(),
       })
       showToast(reseller.active ? '🚫 Reseller deactivated' : '✅ Reseller activated')
@@ -170,6 +239,12 @@ export default function Resellers() {
     if (!window.confirm(`Delete reseller ${reseller.name}? This cannot be undone.`)) return
     setActing(true)
     try {
+      // Unlink user account if linked
+      if (reseller.linkedUserId) {
+        await updateDoc(doc(db, 'users', reseller.linkedUserId), {
+          resellerId: null, resellerCode: null, resellerName: null, role: 'user',
+        })
+      }
       await deleteDoc(doc(db, 'resellers', reseller.id))
       showToast('✅ Reseller deleted')
       setSelected(null)
@@ -227,9 +302,9 @@ export default function Resellers() {
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '16px' }}>
         {[
-          { label: 'Total',    value: resellers.length,                              color: '#818cf8' },
-          { label: 'Active',   value: resellers.filter(r => r.active).length,        color: '#22c55e' },
-          { label: 'Users',    value: resellers.reduce((s, r) => s + (r.userCount || 0), 0), color: '#fbbf24' },
+          { label: 'Total',  value: resellers.length,                                        color: '#818cf8' },
+          { label: 'Active', value: resellers.filter(r => r.active).length,                  color: '#22c55e' },
+          { label: 'Users',  value: resellers.reduce((s, r) => s + (r.userCount || 0), 0),  color: '#fbbf24' },
         ].map(s => (
           <div key={s.label} style={{ background: '#ffffff05', border: '1px solid #ffffff08', borderRadius: '10px', padding: '10px', textAlign: 'center' }}>
             <div style={{ color: s.color, fontWeight: 800, fontSize: '18px' }}>{s.value}</div>
@@ -248,11 +323,10 @@ export default function Resellers() {
             <button onClick={() => { setShowForm(false); setSelected(null); resetForm() }} style={{ background: '#ffffff0d', border: '1px solid #ffffff10', color: '#9ca3af', width: '26px', height: '26px', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' }}>×</button>
           </div>
 
-          {/* Basic info */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '14px' }}>
             {[
-              { key: 'name',  label: 'Full Name *',    placeholder: 'e.g. John Doe' },
-              { key: 'email', label: 'Email',          placeholder: 'john@email.com' },
+              { key: 'name',  label: 'Full Name *',      placeholder: 'e.g. John Doe' },
+              { key: 'email', label: 'Email',            placeholder: 'john@email.com' },
               { key: 'phone', label: 'Phone / WhatsApp', placeholder: '+1 234 567 8900' },
             ].map(f => (
               <div key={f.key}>
@@ -267,7 +341,6 @@ export default function Resellers() {
             ))}
           </div>
 
-          {/* Custom prices */}
           <div style={{ marginBottom: '14px' }}>
             <label style={{ color: '#6b7280', fontSize: '10px', display: 'block', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Custom Prices per Tier</label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -288,7 +361,6 @@ export default function Resellers() {
             </div>
           </div>
 
-          {/* Custom wallets */}
           <div style={{ marginBottom: '14px' }}>
             <label style={{ color: '#6b7280', fontSize: '10px', display: 'block', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Wallet Addresses</label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -341,13 +413,18 @@ export default function Resellers() {
                     <div style={{ color: '#4b5563', fontSize: '11px' }}>{reseller.email || reseller.phone || '—'}</div>
                   </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                   <div style={{ background: reseller.active ? '#22c55e18' : '#ef444418', border: `1px solid ${reseller.active ? '#22c55e33' : '#ef444433'}`, borderRadius: '20px', padding: '2px 8px', color: reseller.active ? '#4ade80' : '#f87171', fontSize: '9px', fontWeight: 700 }}>
                     {reseller.active ? 'ACTIVE' : 'INACTIVE'}
                   </div>
                   <div style={{ background: '#6366f118', border: '1px solid #6366f133', borderRadius: '20px', padding: '2px 8px', color: '#818cf8', fontSize: '9px', fontWeight: 700 }}>
                     {reseller.userCount || 0} users
                   </div>
+                  {reseller.linkedEmail && (
+                    <div style={{ background: '#22c55e18', border: '1px solid #22c55e33', borderRadius: '20px', padding: '2px 8px', color: '#4ade80', fontSize: '9px', fontWeight: 700 }}>
+                      🔗 Linked
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -355,10 +432,7 @@ export default function Resellers() {
               <div style={{ background: '#000000aa', border: '1px solid #ffffff0d', borderRadius: '8px', padding: '8px 12px', marginBottom: '10px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                   <span style={{ color: '#6b7280', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Referral Code</span>
-                  <button
-                    onClick={() => handleCopy(reseller.code, `code-${reseller.id}`)}
-                    style={{ background: 'none', border: 'none', color: copied === `code-${reseller.id}` ? '#4ade80' : '#818cf8', fontSize: '10px', cursor: 'pointer', fontWeight: 700 }}
-                  >
+                  <button onClick={() => handleCopy(reseller.code, `code-${reseller.id}`)} style={{ background: 'none', border: 'none', color: copied === `code-${reseller.id}` ? '#4ade80' : '#818cf8', fontSize: '10px', cursor: 'pointer', fontWeight: 700 }}>
                     {copied === `code-${reseller.id}` ? '✓ Copied' : 'Copy'}
                   </button>
                 </div>
@@ -368,10 +442,7 @@ export default function Resellers() {
               <div style={{ background: '#000000aa', border: '1px solid #ffffff0d', borderRadius: '8px', padding: '8px 12px', marginBottom: '10px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                   <span style={{ color: '#6b7280', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Signup Link</span>
-                  <button
-                    onClick={() => handleCopy(signupLink(reseller.code), `link-${reseller.id}`)}
-                    style={{ background: 'none', border: 'none', color: copied === `link-${reseller.id}` ? '#4ade80' : '#818cf8', fontSize: '10px', cursor: 'pointer', fontWeight: 700 }}
-                  >
+                  <button onClick={() => handleCopy(signupLink(reseller.code), `link-${reseller.id}`)} style={{ background: 'none', border: 'none', color: copied === `link-${reseller.id}` ? '#4ade80' : '#818cf8', fontSize: '10px', cursor: 'pointer', fontWeight: 700 }}>
                     {copied === `link-${reseller.id}` ? '✓ Copied' : 'Copy Link'}
                   </button>
                 </div>
@@ -395,6 +466,38 @@ export default function Resellers() {
                     {c.icon} {reseller.wallets?.[c.id] ? '✓' : '—'}
                   </div>
                 ))}
+              </div>
+
+              {/* Linked account */}
+              <div style={{ background: reseller.linkedEmail ? '#22c55e08' : '#ffffff05', border: `1px solid ${reseller.linkedEmail ? '#22c55e22' : '#ffffff0a'}`, borderRadius: '10px', padding: '10px 12px', marginBottom: '10px' }}>
+                <div style={{ color: '#6b7280', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Reseller Login Account</div>
+                {reseller.linkedEmail ? (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: '#4ade80', fontSize: '12px', fontWeight: 600 }}>🔗 {reseller.linkedEmail}</span>
+                    <button onClick={() => unlinkAccount(reseller)} disabled={acting} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '11px', cursor: 'pointer', fontWeight: 600 }}>
+                      Unlink
+                    </button>
+                  </div>
+                ) : linkingId === reseller.id ? (
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <input
+                      value={linkEmail}
+                      onChange={e => setLinkEmail(e.target.value)}
+                      placeholder="Enter their login email…"
+                      style={{ flex: 1, background: '#ffffff08', border: '1px solid #ffffff12', borderRadius: '8px', padding: '7px 10px', color: '#fff', fontSize: '12px', outline: 'none' }}
+                    />
+                    <button onClick={() => linkAccount(reseller)} disabled={acting} style={{ background: 'linear-gradient(135deg,#22c55e,#16a34a)', border: 'none', color: '#fff', borderRadius: '8px', padding: '7px 12px', cursor: 'pointer', fontWeight: 700, fontSize: '12px' }}>
+                      Link
+                    </button>
+                    <button onClick={() => { setLinkingId(null); setLinkEmail('') }} style={{ background: '#ffffff08', border: '1px solid #ffffff12', color: '#9ca3af', borderRadius: '8px', padding: '7px 10px', cursor: 'pointer', fontSize: '12px' }}>
+                      ✕
+                    </button>
+                  </div>
+                ) : (
+                  <button onClick={() => { setLinkingId(reseller.id); setLinkEmail('') }} style={{ background: '#6366f115', border: '1px solid #6366f133', color: '#818cf8', borderRadius: '8px', padding: '7px 14px', cursor: 'pointer', fontWeight: 600, fontSize: '12px', width: '100%' }}>
+                    🔗 Link Login Account
+                  </button>
+                )}
               </div>
 
               {/* Actions */}
