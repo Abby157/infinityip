@@ -31,7 +31,7 @@ const StatCard = ({ label, value, sub, icon, color, onClick }) => (
 )
 
 export default function Dashboard() {
-  const { user, isAdmin } = useAuth()
+  const { user, isAdmin, isReseller } = useAuth()
   const navigate = useNavigate()
   const [userData, setUserData] = useState(null)
   const [orders,   setOrders]   = useState([])
@@ -64,12 +64,15 @@ export default function Dashboard() {
     load()
   }, [user])
 
-  const activeIPs      = orders.filter(o => o.status === 'active').length
-  const pendingOrders  = orders.filter(o => ['pending','under_review'].includes(o.status)).length
+  const activeIPs     = orders.filter(o => o.status === 'active').length
+  const pendingOrders = orders.filter(o => ['pending','under_review'].includes(o.status)).length
 
   const STATUS_COLOR = {
-    active: '#22c55e', pending: '#f59e0b',
-    under_review: '#6366f1', rejected: '#ef4444', expired: '#6b7280',
+    active:       '#22c55e',
+    pending:      '#f59e0b',
+    under_review: '#6366f1',
+    rejected:     '#ef4444',
+    expired:      '#6b7280',
   }
 
   return (
@@ -84,17 +87,38 @@ export default function Dashboard() {
           <h1 style={{ color: '#fff', fontSize: '20px', fontWeight: 900, margin: 0, letterSpacing: '-0.5px' }}>
             {greeting()}, {userData?.fullName?.split(' ')[0] || user?.email?.split('@')[0]} 👋
           </h1>
-          {isAdmin && (
-            <button onClick={() => navigate('/admin')} style={{ background: '#f59e0b18', border: '1px solid #f59e0b33', color: '#fbbf24', borderRadius: '8px', padding: '6px 12px', cursor: 'pointer', fontWeight: 700, fontSize: '11px', whiteSpace: 'nowrap', flexShrink: 0 }}>
-              ⚙️ Admin
-            </button>
-          )}
+          <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+            {isAdmin && (
+              <button onClick={() => navigate('/admin')} style={{ background: '#f59e0b18', border: '1px solid #f59e0b33', color: '#fbbf24', borderRadius: '8px', padding: '6px 12px', cursor: 'pointer', fontWeight: 700, fontSize: '11px', whiteSpace: 'nowrap' }}>
+                ⚙️ Admin
+              </button>
+            )}
+            {isReseller && (
+              <button onClick={() => navigate('/reseller')} style={{ background: '#6366f118', border: '1px solid #6366f133', color: '#818cf8', borderRadius: '8px', padding: '6px 12px', cursor: 'pointer', fontWeight: 700, fontSize: '11px', whiteSpace: 'nowrap' }}>
+                🤝 Reseller
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
       <div style={{ padding: '14px 16px' }}>
 
-        {/* Wallet balance — full width hero card */}
+        {/* Reseller banner */}
+        {isReseller && (
+          <div
+            onClick={() => navigate('/reseller')}
+            style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', borderRadius: '14px', padding: '14px 16px', marginBottom: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+          >
+            <div>
+              <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '11px', marginBottom: '3px' }}>Reseller Dashboard</div>
+              <div style={{ color: '#fff', fontWeight: 700, fontSize: '14px' }}>Manage your customers, prices & wallets</div>
+            </div>
+            <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '20px' }}>→</span>
+          </div>
+        )}
+
+        {/* Wallet balance */}
         <div style={{
           background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
           borderRadius: '16px', padding: '20px',
@@ -115,7 +139,7 @@ export default function Dashboard() {
           </button>
         </div>
 
-        {/* Stat cards row */}
+        {/* Stat cards */}
         <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
           <StatCard label="Active IPs"   value={loading ? '—' : activeIPs}     icon="📡" color="#6366f1" onClick={() => navigate('/resources')} />
           <StatCard label="Total Orders" value={loading ? '—' : orders.length} icon="📦" color="#8b5cf6" onClick={() => navigate('/transactions')} />
@@ -196,7 +220,7 @@ export default function Dashboard() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {[
               { label: 'Email', value: user?.email },
-              { label: 'Role',  value: isAdmin ? '⚙️ Admin' : '👤 User' },
+              { label: 'Role',  value: isAdmin ? '⚙️ Admin' : isReseller ? '🤝 Reseller' : '👤 User' },
               { label: 'Since', value: userData?.createdAt?.toDate?.()?.toLocaleDateString('en-US',{ month:'short', year:'numeric' }) || '—' },
             ].map(r => (
               <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
