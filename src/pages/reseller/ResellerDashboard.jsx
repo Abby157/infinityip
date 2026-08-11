@@ -17,16 +17,16 @@ const CRYPTOS = [
 ]
 
 export default function ResellerDashboard() {
-  const { userData, logout } = useAuth()
-  const [reseller,     setReseller]     = useState(null)
-  const [users,        setUsers]        = useState([])
-  const [loading,      setLoading]      = useState(true)
-  const [acting,       setActing]       = useState(false)
-  const [toast,        setToast]        = useState('')
-  const [tab,          setTab]          = useState('overview')
-  const [prices,       setPrices]       = useState({ low: '', standard: '', strong: '', elite: '' })
-  const [wallets,      setWallets]      = useState({ btc: '', eth: '', usdt: '' })
-  const [copied,       setCopied]       = useState('')
+  const { user, userData, logout } = useAuth()
+  const [reseller, setReseller] = useState(null)
+  const [users,    setUsers]    = useState([])
+  const [loading,  setLoading]  = useState(true)
+  const [acting,   setActing]   = useState(false)
+  const [toast,    setToast]    = useState('')
+  const [tab,      setTab]      = useState('overview')
+  const [prices,   setPrices]   = useState({ low: '', standard: '', strong: '', elite: '' })
+  const [wallets,  setWallets]  = useState({ btc: '', eth: '', usdt: '' })
+  const [copied,   setCopied]   = useState('')
 
   useEffect(() => {
     if (!userData?.resellerId) return
@@ -36,7 +36,6 @@ export default function ResellerDashboard() {
   const load = async () => {
     setLoading(true)
     try {
-      // Load reseller doc
       const resellerSnap = await getDocs(
         query(collection(db, 'resellers'), where('__name__', '==', userData.resellerId))
       )
@@ -56,7 +55,6 @@ export default function ResellerDashboard() {
         })
       }
 
-      // Load users who signed up with this reseller code
       const usersSnap = await getDocs(
         query(collection(db, 'users'), where('resellerId', '==', userData.resellerId))
       )
@@ -77,22 +75,34 @@ export default function ResellerDashboard() {
         newPrices[t.id] = (!isNaN(v) && v > 0) ? v : t.default
       })
 
+      // Update reseller doc
       await updateDoc(doc(db, 'resellers', reseller.id), {
         prices:    newPrices,
         updatedAt: serverTimestamp(),
       })
 
-      // Update all reseller's users customPrices
-      for (const user of users) {
-        await updateDoc(doc(db, 'users', user.id), {
-          customPrices: newPrices,
-          updatedAt:    serverTimestamp(),
-        })
+      // Update reseller's OWN user doc so marketplace shows correct prices
+      await updateDoc(doc(db, 'users', user.uid), {
+        customPrices: newPrices,
+        updatedAt:    serverTimestamp(),
+      })
+
+      // Update all reseller's customers
+      for (const u of users) {
+        if (u.id !== user.uid) {
+          await updateDoc(doc(db, 'users', u.id), {
+            customPrices: newPrices,
+            updatedAt:    serverTimestamp(),
+          })
+        }
       }
 
       setReseller(prev => ({ ...prev, prices: newPrices }))
       showToast('✅ Prices updated for you and all your customers')
-    } catch (err) { console.error(err) }
+    } catch (err) {
+      console.error(err)
+      showToast('❌ Failed to save prices')
+    }
     setActing(false)
   }
 
@@ -105,22 +115,34 @@ export default function ResellerDashboard() {
         if (wallets[c.id]?.trim()) newWallets[c.id] = wallets[c.id].trim()
       })
 
+      // Update reseller doc
       await updateDoc(doc(db, 'resellers', reseller.id), {
         wallets:   newWallets,
         updatedAt: serverTimestamp(),
       })
 
-      // Update all reseller's users customWallets
-      for (const user of users) {
-        await updateDoc(doc(db, 'users', user.id), {
-          customWallets: newWallets,
-          updatedAt:     serverTimestamp(),
-        })
+      // Update reseller's OWN user doc so payment page shows correct wallets
+      await updateDoc(doc(db, 'users', user.uid), {
+        customWallets: newWallets,
+        updatedAt:     serverTimestamp(),
+      })
+
+      // Update all reseller's customers
+      for (const u of users) {
+        if (u.id !== user.uid) {
+          await updateDoc(doc(db, 'users', u.id), {
+            customWallets: newWallets,
+            updatedAt:     serverTimestamp(),
+          })
+        }
       }
 
       setReseller(prev => ({ ...prev, wallets: newWallets }))
       showToast('✅ Wallets updated for you and all your customers')
-    } catch (err) { console.error(err) }
+    } catch (err) {
+      console.error(err)
+      showToast('❌ Failed to save wallets')
+    }
     setActing(false)
   }
 
@@ -198,11 +220,10 @@ export default function ResellerDashboard() {
         {/* Overview tab */}
         {tab === 'overview' && (
           <div>
-            {/* Stats */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px' }}>
               {[
-                { label: 'Total Customers', value: users.length,                                       color: '#818cf8' },
-                { label: 'Active Code',     value: reseller.code,                                      color: '#22c55e' },
+                { label: 'Total Customers', value: users.length,  color: '#818cf8' },
+                { label: 'Active Code',     value: reseller.code, color: '#22c55e' },
               ].map(s => (
                 <div key={s.label} style={{ background: 'linear-gradient(145deg,#13131f,#0d0d18)', border: '1px solid #ffffff0d', borderRadius: '12px', padding: '14px', textAlign: 'center' }}>
                   <div style={{ color: s.color, fontWeight: 800, fontSize: '18px', marginBottom: '4px' }}>{s.value}</div>
@@ -354,7 +375,7 @@ export default function ResellerDashboard() {
           </div>
         )}
 
-        {/* Users/Customers tab */}
+        {/* Customers tab */}
         {tab === 'users' && (
           <div>
             {users.length === 0 ? (
@@ -371,16 +392,16 @@ export default function ResellerDashboard() {
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {users.map(user => {
-                  const joined = user.createdAt?.toDate?.()?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) || '—'
+                {users.map(u => {
+                  const joined = u.createdAt?.toDate?.()?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) || '—'
                   return (
-                    <div key={user.id} style={{ background: 'linear-gradient(145deg,#13131f,#0d0d18)', border: '1px solid #ffffff0d', borderRadius: '12px', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div key={u.id} style={{ background: 'linear-gradient(145deg,#13131f,#0d0d18)', border: '1px solid #ffffff0d', borderRadius: '12px', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '15px', fontWeight: 900, color: '#fff', flexShrink: 0 }}>
-                        {(user.fullName || user.email || '?')[0].toUpperCase()}
+                        {(u.fullName || u.email || '?')[0].toUpperCase()}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ color: '#fff', fontWeight: 700, fontSize: '13px', marginBottom: '2px' }}>{user.fullName || 'Unknown'}</div>
-                        <div style={{ color: '#4b5563', fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</div>
+                        <div style={{ color: '#fff', fontWeight: 700, fontSize: '13px', marginBottom: '2px' }}>{u.fullName || 'Unknown'}</div>
+                        <div style={{ color: '#4b5563', fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email}</div>
                       </div>
                       <div style={{ color: '#374151', fontSize: '11px', whiteSpace: 'nowrap' }}>{joined}</div>
                     </div>
