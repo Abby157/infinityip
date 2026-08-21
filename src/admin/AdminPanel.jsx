@@ -10,18 +10,19 @@ import SiteSettings from './settings/SiteSettings'
 import PaymentHistory from './payments/PaymentHistory'
 import Newsletter from './newsletter/Newsletter'
 import Resellers from './resellers/Resellers'
+import GlobalPrices from './settings/GlobalPrices'
 
 const NAV = [
-  { id: 'dashboard',   label: 'Dashboard',   icon: '⊞' },
-  { id: 'payments',    label: 'Payments',     icon: '💳' },
-  { id: 'history',     label: 'Pay History',  icon: '🧾' },
-  { id: 'orders',      label: 'Orders',       icon: '📦' },
-  { id: 'users',       label: 'Users',        icon: '👥' },
-  { id: 'tickets',     label: 'Tickets',      icon: '💬' },
-  { id: 'newsletter',  label: 'Newsletter',   icon: '📧' },
-  { id: 'resellers', label: 'Resellers', icon: '🤝' },
-  { id: 'settings',    label: 'Settings',     icon: '⚙️' },
-
+  { id: 'dashboard',    label: 'Dashboard',  icon: '⊞' },
+  { id: 'payments',     label: 'Payments',   icon: '💳' },
+  { id: 'history',      label: 'Pay History',icon: '🧾' },
+  { id: 'orders',       label: 'Orders',     icon: '📦' },
+  { id: 'users',        label: 'Users',      icon: '👥' },
+  { id: 'tickets',      label: 'Tickets',    icon: '💬' },
+  { id: 'newsletter',   label: 'Newsletter', icon: '📧' },
+  { id: 'resellers',    label: 'Resellers',  icon: '🤝' },
+  { id: 'globalprices', label: 'Prices',     icon: '💰' },
+  { id: 'settings',     label: 'Settings',   icon: '⚙️' },
 ]
 
 export default function AdminPanel() {
@@ -36,16 +37,17 @@ export default function AdminPanel() {
 
   const renderPage = () => {
     switch (active) {
-      case 'dashboard':  return <AdminDashboard />
-      case 'payments':   return <PaymentReviews />
-      case 'history':    return <PaymentHistory />
-      case 'orders':     return <Orders />
-      case 'users':      return <Users />
-      case 'tickets':    return <SupportTickets />
-      case 'newsletter': return <Newsletter />
-      case 'resellers': return <Resellers />
-      case 'settings':   return <SiteSettings />
-      default:           return <AdminDashboard />
+      case 'dashboard':    return <AdminDashboard />
+      case 'payments':     return <PaymentReviews />
+      case 'history':      return <PaymentHistory />
+      case 'orders':       return <Orders />
+      case 'users':        return <Users />
+      case 'tickets':      return <SupportTickets />
+      case 'newsletter':   return <Newsletter />
+      case 'resellers':    return <Resellers />
+      case 'globalprices': return <GlobalPrices />
+      case 'settings':     return <SiteSettings />
+      default:             return <AdminDashboard />
     }
   }
 
