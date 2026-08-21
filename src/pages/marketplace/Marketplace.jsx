@@ -20,8 +20,8 @@ function IPCard({ listing, onBuy, customPrices }) {
   const ipType    = IP_TYPES.find(t => t.id === listing.ipType)
   const avail     = availColor(listing.available, listing.total)
   const pct       = Math.round((listing.available / listing.total) * 100)
-  const price     = customPrices?.[listing.tier] || tier.price
-  const hasCustom = customPrices?.[listing.tier] && customPrices[listing.tier] !== tier.price
+  const price     = customPrices?.[listing.tier] ?? tier.price
+  const hasCustom = customPrices?.[listing.tier] != null && customPrices[listing.tier] !== tier.price
 
   return (
     <div style={{
@@ -113,8 +113,8 @@ function IPCard({ listing, onBuy, customPrices }) {
 function BuyModal({ listing, onClose, onConfirm, loading, customPrices }) {
   const tier      = TIERS[listing.tier]
   const ipType    = IP_TYPES.find(t => t.id === listing.ipType)
-  const price     = customPrices?.[listing.tier] || tier.price
-  const hasCustom = customPrices?.[listing.tier] && customPrices[listing.tier] !== tier.price
+  const price     = customPrices?.[listing.tier] ?? tier.price
+  const hasCustom = customPrices?.[listing.tier] != null && customPrices[listing.tier] !== tier.price
 
   return (
     <div
@@ -236,12 +236,19 @@ export default function Marketplace() {
     if (!user?.uid) return
     const load = async () => {
       try {
+        // First check if user has reseller-set custom prices
         const userSnap = await getDoc(doc(db, 'users', user.uid))
         if (userSnap.exists()) {
           const userData = userSnap.data()
           if (userData.customPrices && Object.keys(userData.customPrices).length > 0) {
             setCustomPrices(userData.customPrices)
+            return // reseller prices take priority — stop here
           }
+        }
+        // No reseller prices — fall back to admin global prices
+        const globalSnap = await getDoc(doc(db, 'settings', 'globalPrices'))
+        if (globalSnap.exists()) {
+          setCustomPrices(globalSnap.data())
         }
       } catch (err) { console.error(err) }
     }
@@ -262,10 +269,9 @@ export default function Marketplace() {
     if (selectedTypes.length > 0) list = list.filter(l => selectedTypes.includes(l.ipType))
     if (availOnly) list = list.filter(l => l.available > 0)
     list.sort((a, b) => {
-  if (sortBy === 'featured') return 0
-      
-      if (sortBy === 'price-asc')    return (customPrices?.[a.tier] || TIERS[a.tier].price) - (customPrices?.[b.tier] || TIERS[b.tier].price)
-      if (sortBy === 'price-desc')   return (customPrices?.[b.tier] || TIERS[b.tier].price) - (customPrices?.[a.tier] || TIERS[a.tier].price)
+      if (sortBy === 'featured')     return 0
+      if (sortBy === 'price-asc')    return (customPrices?.[a.tier] ?? TIERS[a.tier].price) - (customPrices?.[b.tier] ?? TIERS[b.tier].price)
+      if (sortBy === 'price-desc')   return (customPrices?.[b.tier] ?? TIERS[b.tier].price) - (customPrices?.[a.tier] ?? TIERS[a.tier].price)
       if (sortBy === 'availability') return b.available / b.total - a.available / a.total
       return 0
     })
@@ -277,7 +283,7 @@ export default function Marketplace() {
     setOrderLoading(true)
     try {
       const tier  = TIERS[listing.tier]
-      const price = customPrices?.[listing.tier] || tier.price
+      const price = customPrices?.[listing.tier] ?? tier.price
       await addDoc(collection(db, 'orders'), {
         userId:        user.uid,
         userEmail:     user.email,
@@ -337,7 +343,7 @@ export default function Marketplace() {
           {TIER_ORDER.map(id => {
             const t      = TIERS[id]
             const active = selectedTiers.includes(id)
-            const price  = customPrices?.[id] || t.price
+            const price  = customPrices?.[id] ?? t.price
             return (
               <button key={id} onClick={() => toggleTier(id)} style={{
                 background: active ? `${t.color}22` : '#ffffff08',
