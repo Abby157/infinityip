@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
-import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore'
+import { collection, addDoc, serverTimestamp, doc, onSnapshot } from 'firebase/firestore'
 import { db } from '../../firebase/config'
 import { SHUFFLED_LISTINGS, TIERS, IP_TYPES, REGIONS, TIER_ORDER } from '../../data/marketplaceData'
 
@@ -36,7 +36,6 @@ function IPCard({ listing, onBuy, customPrices }) {
         </div>
       )}
 
-      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
         <img src={FLAG(listing.countryCode)} alt="" style={{ borderRadius: '2px', flexShrink: 0 }} onError={e => { e.target.style.display = 'none' }} />
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -48,13 +47,11 @@ function IPCard({ listing, onBuy, customPrices }) {
         </div>
       </div>
 
-      {/* Tier */}
       <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', background: `${tier.color}18`, border: `1px solid ${tier.color}44`, borderRadius: '20px', padding: '3px 10px', marginBottom: '12px' }}>
         <div style={{ width: '5px', height: '5px', borderRadius: '50%', background: tier.accent, boxShadow: `0 0 5px ${tier.accent}` }} />
         <span style={{ color: tier.accent, fontSize: '10px', fontWeight: 700, letterSpacing: '0.5px' }}>{tier.label.toUpperCase()}</span>
       </div>
 
-      {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px', marginBottom: '12px' }}>
         {[
           { label: 'Trust',   value: tier.trustScore },
@@ -68,7 +65,6 @@ function IPCard({ listing, onBuy, customPrices }) {
         ))}
       </div>
 
-      {/* Availability */}
       <div style={{ marginBottom: '14px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
           <span style={{ color: '#6b7280', fontSize: '10px' }}>Availability</span>
@@ -79,7 +75,6 @@ function IPCard({ listing, onBuy, customPrices }) {
         </div>
       </div>
 
-      {/* Footer */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
           <div style={{ color: '#6b7280', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Price/mo</div>
@@ -234,26 +229,38 @@ export default function Marketplace() {
 
   useEffect(() => {
     if (!user?.uid) return
-    const load = async () => {
-      try {
-        // First check if user has reseller-set custom prices
-        const userSnap = await getDoc(doc(db, 'users', user.uid))
-        if (userSnap.exists()) {
-          const userData = userSnap.data()
-          if (userData.customPrices && Object.keys(userData.customPrices).length > 0) {
-            setCustomPrices(userData.customPrices)
-            return // reseller prices take priority — stop here
-          }
+
+    let unsubGlobal = null
+
+    // Listen to user doc in real time
+    const unsubUser = onSnapshot(doc(db, 'users', user.uid), (userSnap) => {
+      // Clean up any previous global listener
+      if (unsubGlobal) { unsubGlobal(); unsubGlobal = null }
+
+      if (userSnap.exists()) {
+        const userData = userSnap.data()
+        if (userData.customPrices && Object.keys(userData.customPrices).length > 0) {
+          // Reseller prices exist — use them, no need for global
+          setCustomPrices(userData.customPrices)
+          return
         }
-        // No reseller prices — fall back to admin global prices
-        const globalSnap = await getDoc(doc(db, 'settings', 'globalPrices'))
+      }
+
+      // No reseller prices — listen to global prices in real time
+      unsubGlobal = onSnapshot(doc(db, 'settings', 'globalPrices'), (globalSnap) => {
         if (globalSnap.exists()) {
           setCustomPrices(globalSnap.data())
+        } else {
+          setCustomPrices(null)
         }
-      } catch (err) { console.error(err) }
+      })
+    })
+
+    return () => {
+      unsubUser()
+      if (unsubGlobal) unsubGlobal()
     }
-    load()
-  }, [user])
+  }, [user?.uid])
 
   const toggleTier = id => setSelectedTiers(p => p.includes(id) ? p.filter(t => t !== id) : [...p, id])
   const toggleType = id => setSelectedTypes(p => p.includes(id) ? p.filter(t => t !== id) : [...p, id])
