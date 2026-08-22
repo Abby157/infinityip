@@ -87,18 +87,22 @@ export default function ResellerDashboard() {
         updatedAt:    serverTimestamp(),
       })
 
-      // Update all reseller's customers
-      for (const u of users) {
-        if (u.id !== user.uid) {
-          await updateDoc(doc(db, 'users', u.id), {
+      // Update all reseller's customers (in parallel)
+      const results = await Promise.allSettled(
+        users.filter(u => u.id !== user.uid).map(u =>
+          updateDoc(doc(db, 'users', u.id), {
             customPrices: newPrices,
             updatedAt:    serverTimestamp(),
           })
-        }
-      }
+        )
+      )
+      const failed = results.filter(r => r.status === 'rejected')
+      failed.forEach(r => console.error(r.reason))
 
       setReseller(prev => ({ ...prev, prices: newPrices }))
-      showToast('✅ Prices updated for you and all your customers')
+      showToast(failed.length > 0
+        ? `⚠️ Prices updated, but failed for ${failed.length} customer(s)`
+        : '✅ Prices updated for you and all your customers')
     } catch (err) {
       console.error(err)
       showToast('❌ Failed to save prices')
@@ -127,18 +131,22 @@ export default function ResellerDashboard() {
         updatedAt:     serverTimestamp(),
       })
 
-      // Update all reseller's customers
-      for (const u of users) {
-        if (u.id !== user.uid) {
-          await updateDoc(doc(db, 'users', u.id), {
+      // Update all reseller's customers (in parallel)
+      const results = await Promise.allSettled(
+        users.filter(u => u.id !== user.uid).map(u =>
+          updateDoc(doc(db, 'users', u.id), {
             customWallets: newWallets,
             updatedAt:     serverTimestamp(),
           })
-        }
-      }
+        )
+      )
+      const failed = results.filter(r => r.status === 'rejected')
+      failed.forEach(r => console.error(r.reason))
 
       setReseller(prev => ({ ...prev, wallets: newWallets }))
-      showToast('✅ Wallets updated for you and all your customers')
+      showToast(failed.length > 0
+        ? `⚠️ Wallets updated, but failed for ${failed.length} customer(s)`
+        : '✅ Wallets updated for you and all your customers')
     } catch (err) {
       console.error(err)
       showToast('❌ Failed to save wallets')

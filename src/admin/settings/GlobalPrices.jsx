@@ -1,13 +1,7 @@
 import { useState, useEffect } from 'react'
 import { doc, getDoc, setDoc } from 'firebase/firestore'
 import { db } from '../../firebase/config'
-
-const TIERS = [
-  { id: 'low',      label: 'Low',      default: 220, color: '#6b7280', accent: '#9ca3af' },
-  { id: 'standard', label: 'Standard', default: 280, color: '#3b82f6', accent: '#60a5fa' },
-  { id: 'strong',   label: 'Strong',   default: 350, color: '#8b5cf6', accent: '#a78bfa' },
-  { id: 'elite',    label: 'Elite',    default: 500, color: '#f59e0b', accent: '#fbbf24' },
-]
+import { TIERS, TIER_ORDER } from '../../data/marketplaceData'
 
 export default function GlobalPrices() {
   const [prices,  setPrices]  = useState({ low: '', standard: '', strong: '', elite: '' })
@@ -38,9 +32,9 @@ export default function GlobalPrices() {
     setSaving(true)
     try {
       const data = {}
-      TIERS.forEach(t => {
-        const v = parseFloat(prices[t.id])
-        data[t.id] = (!isNaN(v) && v > 0) ? v : t.default
+      TIER_ORDER.forEach(id => {
+        const v = parseFloat(prices[id])
+        data[id] = (!isNaN(v) && v > 0) ? v : TIERS[id].price
       })
       await setDoc(doc(db, 'settings', 'globalPrices'), data)
       setSaved(true)
@@ -67,14 +61,14 @@ export default function GlobalPrices() {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px' }}>
-        {TIERS.map(t => (
+        {TIER_ORDER.map(id => { const t = TIERS[id]; return (
           <div key={t.id} style={{ background: '#0d0d1a', border: `1px solid ${t.color}33`, borderRadius: '12px', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
                 <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: t.accent, boxShadow: `0 0 6px ${t.accent}` }} />
                 <span style={{ color: t.accent, fontWeight: 700, fontSize: '12px' }}>{t.label.toUpperCase()}</span>
               </div>
-              <div style={{ color: '#4b5563', fontSize: '10px' }}>Default: ${t.default}/mo</div>
+              <div style={{ color: '#4b5563', fontSize: '10px' }}>Default: ${t.price}/mo</div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={{ color: '#6b7280', fontSize: '14px', fontWeight: 700 }}>$</span>
@@ -83,7 +77,7 @@ export default function GlobalPrices() {
                 min="1"
                 value={prices[t.id]}
                 onChange={e => setPrices(p => ({ ...p, [t.id]: e.target.value }))}
-                placeholder={t.default}
+                placeholder={t.price}
                 style={{
                   width: '90px',
                   background: '#ffffff08',
@@ -100,7 +94,7 @@ export default function GlobalPrices() {
               <span style={{ color: '#4b5563', fontSize: '11px' }}>/mo</span>
             </div>
           </div>
-        ))}
+        )})}
       </div>
 
       <div style={{ background: '#f59e0b10', border: '1px solid #f59e0b22', borderRadius: '10px', padding: '10px 14px', marginBottom: '16px', fontSize: '11px', color: '#9ca3af', lineHeight: 1.6 }}>

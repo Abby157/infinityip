@@ -7,6 +7,11 @@ import { SHUFFLED_LISTINGS, TIERS, IP_TYPES, REGIONS, TIER_ORDER } from '../../d
 
 const FLAG = code => `https://flagcdn.com/24x18/${code?.toLowerCase()}.png`
 
+// Resolve the effective price for a tier: reseller/global override, else built-in default
+const getPrice = (customPrices, tierId) => customPrices?.[tierId] ?? TIERS[tierId].price
+const hasCustomPrice = (customPrices, tierId) =>
+  customPrices?.[tierId] != null && customPrices[tierId] !== TIERS[tierId].price
+
 const availColor = (available, total) => {
   const pct = available / total
   if (pct > 0.5) return { bar: '#22c55e', text: '#4ade80' }
@@ -20,8 +25,8 @@ function IPCard({ listing, onBuy, customPrices }) {
   const ipType    = IP_TYPES.find(t => t.id === listing.ipType)
   const avail     = availColor(listing.available, listing.total)
   const pct       = Math.round((listing.available / listing.total) * 100)
-  const price     = customPrices?.[listing.tier] ?? tier.price
-  const hasCustom = customPrices?.[listing.tier] != null && customPrices[listing.tier] !== tier.price
+  const price     = getPrice(customPrices, listing.tier)
+  const hasCustom = hasCustomPrice(customPrices, listing.tier)
 
   return (
     <div style={{
@@ -108,8 +113,8 @@ function IPCard({ listing, onBuy, customPrices }) {
 function BuyModal({ listing, onClose, onConfirm, loading, customPrices }) {
   const tier      = TIERS[listing.tier]
   const ipType    = IP_TYPES.find(t => t.id === listing.ipType)
-  const price     = customPrices?.[listing.tier] ?? tier.price
-  const hasCustom = customPrices?.[listing.tier] != null && customPrices[listing.tier] !== tier.price
+  const price     = getPrice(customPrices, listing.tier)
+  const hasCustom = hasCustomPrice(customPrices, listing.tier)
 
   return (
     <div
@@ -231,29 +236,33 @@ export default function Marketplace() {
     if (!user?.uid) return
 
     let unsubGlobal = null
+    let usingGlobal = false
 
     // Listen to user doc in real time
     const unsubUser = onSnapshot(doc(db, 'users', user.uid), (userSnap) => {
-      // Clean up any previous global listener
-      if (unsubGlobal) { unsubGlobal(); unsubGlobal = null }
+      const userData = userSnap.exists() ? userSnap.data() : null
+      const resellerPrices = userData?.customPrices && Object.keys(userData.customPrices).length > 0
+        ? userData.customPrices
+        : null
 
-      if (userSnap.exists()) {
-        const userData = userSnap.data()
-        if (userData.customPrices && Object.keys(userData.customPrices).length > 0) {
-          // Reseller prices exist — use them, no need for global
-          setCustomPrices(userData.customPrices)
-          return
-        }
+      if (resellerPrices) {
+        // Reseller prices exist — use them, tear down global listener if one was active
+        if (unsubGlobal) { unsubGlobal(); unsubGlobal = null; usingGlobal = false }
+        setCustomPrices(resellerPrices)
+        return
       }
 
-      // No reseller prices — listen to global prices in real time
-      unsubGlobal = onSnapshot(doc(db, 'settings', 'globalPrices'), (globalSnap) => {
-        if (globalSnap.exists()) {
-          setCustomPrices(globalSnap.data())
-        } else {
-          setCustomPrices(null)
-        }
-      })
+      // No reseller prices — listen to global prices in real time (only subscribe once)
+      if (!usingGlobal) {
+        usingGlobal = true
+        unsubGlobal = onSnapshot(doc(db, 'settings', 'globalPrices'), (globalSnap) => {
+          setCustomPrices(globalSnap.exists() ? globalSnap.data() : null)
+        }, (err) => {
+          console.error('Failed to listen to global prices:', err)
+        })
+      }
+    }, (err) => {
+      console.error('Failed to listen to user doc:', err)
     })
 
     return () => {
@@ -277,8 +286,8 @@ export default function Marketplace() {
     if (availOnly) list = list.filter(l => l.available > 0)
     list.sort((a, b) => {
       if (sortBy === 'featured')     return 0
-      if (sortBy === 'price-asc')    return (customPrices?.[a.tier] ?? TIERS[a.tier].price) - (customPrices?.[b.tier] ?? TIERS[b.tier].price)
-      if (sortBy === 'price-desc')   return (customPrices?.[b.tier] ?? TIERS[b.tier].price) - (customPrices?.[a.tier] ?? TIERS[a.tier].price)
+      if (sortBy === 'price-asc')    return getPrice(customPrices, a.tier) - getPrice(customPrices, b.tier)
+      if (sortBy === 'price-desc')   return getPrice(customPrices, b.tier) - getPrice(customPrices, a.tier)
       if (sortBy === 'availability') return b.available / b.total - a.available / a.total
       return 0
     })
@@ -289,8 +298,7 @@ export default function Marketplace() {
     if (!user) return navigate('/login')
     setOrderLoading(true)
     try {
-      const tier  = TIERS[listing.tier]
-      const price = customPrices?.[listing.tier] ?? tier.price
+      const price = getPrice(customPrices, listing.tier)
       await addDoc(collection(db, 'orders'), {
         userId:        user.uid,
         userEmail:     user.email,
@@ -350,7 +358,7 @@ export default function Marketplace() {
           {TIER_ORDER.map(id => {
             const t      = TIERS[id]
             const active = selectedTiers.includes(id)
-            const price  = customPrices?.[id] ?? t.price
+            const price  = getPrice(customPrices, id)
             return (
               <button key={id} onClick={() => toggleTier(id)} style={{
                 background: active ? `${t.color}22` : '#ffffff08',
