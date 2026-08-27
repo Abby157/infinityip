@@ -191,10 +191,14 @@ export default function Users() {
     setActing(true)
     try {
       const uid = user.uid || user.id
+      const idToken = await adminUser.getIdToken()
       const res = await fetch('/api/delete-user', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uid, adminEmail: adminUser?.email }),
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ uid }),
       })
       if (!res.ok) {
         const err = await res.json()
