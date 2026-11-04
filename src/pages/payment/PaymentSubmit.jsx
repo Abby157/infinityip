@@ -181,13 +181,19 @@ export default function PaymentSubmit() {
         createdAt: serverTimestamp(),
       })
 
-      await sendPaymentReceivedEmail({
-        toEmail: user.email,
-        toName:  user.email.split('@')[0],
-        amount:  displayPrice,
-        tier:    order?.tier,
-        city:    order?.city,
-      })
+      // Confirmation email is best-effort — the payment is already saved,
+      // so an email failure (rate limit, network blip) must not look like a submit failure
+      try {
+        await sendPaymentReceivedEmail({
+          toEmail: user.email,
+          toName:  user.email.split('@')[0],
+          amount:  displayPrice,
+          tier:    order?.tier,
+          city:    order?.city,
+        })
+      } catch (emailErr) {
+        console.error('Payment confirmation email failed:', emailErr)
+      }
 
       setSuccess(true)
     } catch (err) {

@@ -110,6 +110,8 @@ export const MARKETPLACE_LISTINGS = [
   { id: 'my-pen-mob-low',     country: 'Malaysia',      countryCode: 'MY', region: 'Asia Pacific',   city: 'Penang',         ipType: 'mobile',      tier: 'low',      available: 76,  total: 140, featured: false },
   { id: 'th-ban-res-standard',country: 'Thailand',      countryCode: 'TH', region: 'Asia Pacific',   city: 'Bangkok',        ipType: 'residential', tier: 'standard', available: 54,  total: 100, featured: false },
   { id: 'th-chi-mob-low',     country: 'Thailand',      countryCode: 'TH', region: 'Asia Pacific',   city: 'Chiang Mai',     ipType: 'mobile',      tier: 'low',      available: 82,  total: 150, featured: false },
+  { id: 'bn-bsb-res-standard',country: 'Brunei',        countryCode: 'BN', region: 'Asia Pacific',   city: 'Bandar Seri Begawan', ipType: 'residential', tier: 'standard', available: 34,  total: 70,  featured: false },
+  { id: 'bn-bsb-mob-low',     country: 'Brunei',        countryCode: 'BN', region: 'Asia Pacific',   city: 'Bandar Seri Begawan', ipType: 'mobile',      tier: 'low',      available: 58,  total: 110, featured: false },
   { id: 'id-jak-res-standard',country: 'Indonesia',     countryCode: 'ID', region: 'Asia Pacific',   city: 'Jakarta',        ipType: 'residential', tier: 'standard', available: 61,  total: 110, featured: false },
   { id: 'id-sur-mob-low',     country: 'Indonesia',     countryCode: 'ID', region: 'Asia Pacific',   city: 'Surabaya',       ipType: 'mobile',      tier: 'low',      available: 89,  total: 160, featured: false },
   { id: 'ph-man-res-standard',country: 'Philippines',   countryCode: 'PH', region: 'Asia Pacific',   city: 'Manila',         ipType: 'residential', tier: 'standard', available: 57,  total: 105, featured: false },

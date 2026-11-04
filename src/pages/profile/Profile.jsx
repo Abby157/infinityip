@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { doc, getDoc, updateDoc } from 'firebase/firestore'
 import { updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth'
@@ -27,7 +28,9 @@ const Input = ({ value, onChange, placeholder, type = 'text', disabled }) => (
 )
 
 export default function Profile() {
-  const { user, isAdmin } = useAuth()
+  const { user, isAdmin, logout } = useAuth()
+  const navigate = useNavigate()
+  const [loggingOut,  setLoggingOut]  = useState(false)
   const [userData,    setUserData]    = useState(null)
   const [fullName,    setFullName]    = useState('')
   const [saving,      setSaving]      = useState(false)
@@ -89,6 +92,12 @@ export default function Profile() {
     }
     setPassLoading(false)
     setTimeout(() => setPassMsg(''), 3000)
+  }
+
+  const handleLogout = async () => {
+    setLoggingOut(true)
+    await logout()
+    navigate('/login')
   }
 
   const joined = userData?.createdAt?.toDate?.()?.toLocaleDateString('en-US', {
@@ -243,6 +252,20 @@ export default function Profile() {
                 </div>
               ))}
             </div>
+
+            <button
+              onClick={handleLogout}
+              disabled={loggingOut}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                background: '#ef444415', border: '1px solid #ef444440', color: '#f87171',
+                borderRadius: '10px', padding: '13px', cursor: loggingOut ? 'not-allowed' : 'pointer',
+                fontWeight: 700, fontSize: '14px', marginTop: '18px',
+              }}
+            >
+              <span>🚪</span>
+              <span>{loggingOut ? 'Logging out…' : 'Logout'}</span>
+            </button>
           </div>
         )}
       </div>
