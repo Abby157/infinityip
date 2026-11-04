@@ -92,6 +92,7 @@ export default function PaymentReviews() {
 
     // Order is already approved and the IP already assigned above — the email is
     // best-effort, so a send failure here must not look like the approval failed
+    let approvalEmailSent = false
     try {
       await sendIPApprovedEmail({
         toEmail: order.userEmail,
@@ -106,16 +107,21 @@ export default function PaymentReviews() {
           year: 'numeric',
         }),
       })
+      approvalEmailSent = true
     } catch (emailErr) {
       console.error('IP approved email failed:', emailErr)
     }
 
+    await updateDoc(doc(db, 'orders', order.id), { approvalEmailSent })
+
     setOrders(prev => prev.map(o => o.id === order.id
-      ? { ...o, status: 'active', paymentStatus: 'paid', ipAddress: ip, expiryDate }
+      ? { ...o, status: 'active', paymentStatus: 'paid', ipAddress: ip, expiryDate, approvalEmailSent }
       : o
     ))
     setSelected(null)
-    showToast(`✅ Approved! IP ${ip} assigned to ${order.userEmail}`)
+    showToast(approvalEmailSent
+      ? `✅ Approved! IP ${ip} assigned to ${order.userEmail}`
+      : `⚠️ Approved, but the confirmation email failed to send to ${order.userEmail}`)
   } catch (err) {
     console.error(err)
     showToast('❌ Error approving order')
@@ -146,6 +152,7 @@ export default function PaymentReviews() {
 
       // Order is already rejected above — email is best-effort, so a send
       // failure here must not look like the rejection failed
+      let rejectionEmailSent = false
       try {
         await sendIPRejectedEmail({
           toEmail: order.userEmail,
@@ -154,18 +161,23 @@ export default function PaymentReviews() {
           country: order.country,
           reason:  rejectReason.trim(),
         })
+        rejectionEmailSent = true
       } catch (emailErr) {
         console.error('IP rejected email failed:', emailErr)
       }
 
+      await updateDoc(doc(db, 'orders', order.id), { rejectionEmailSent })
+
       setOrders(prev => prev.map(o => o.id === order.id
-        ? { ...o, status: 'rejected', paymentStatus: 'failed', rejectionReason: rejectReason.trim() }
+        ? { ...o, status: 'rejected', paymentStatus: 'failed', rejectionReason: rejectReason.trim(), rejectionEmailSent }
         : o
       ))
       setSelected(null)
       setShowReject(false)
       setRejectReason('')
-      showToast(`❌ Order rejected for ${order.userEmail}`)
+      showToast(rejectionEmailSent
+        ? `❌ Order rejected for ${order.userEmail}`
+        : `⚠️ Rejected, but the rejection email failed to send to ${order.userEmail}`)
     } catch (err) {
       console.error(err)
       showToast('❌ Error rejecting order')
@@ -400,12 +412,24 @@ export default function PaymentReviews() {
             {selected.status === 'active' && (
               <div style={{ background: '#22c55e10', border: '1px solid #22c55e33', borderRadius: '10px', padding: '12px', textAlign: 'center', color: '#4ade80', fontSize: '13px', fontWeight: 600 }}>
                 ✅ This order is active and IP is assigned
+                {selected.approvalEmailSent === false && (
+                  <div style={{ color: '#fbbf24', fontSize: '11px', fontWeight: 600, marginTop: '6px' }}>⚠️ Approval email failed to send — notify the user manually</div>
+                )}
+                {selected.approvalEmailSent === true && (
+                  <div style={{ color: '#6b7280', fontSize: '11px', fontWeight: 400, marginTop: '6px' }}>📧 Approval email sent</div>
+                )}
               </div>
             )}
 
             {selected.status === 'rejected' && (
               <div style={{ background: '#ef444410', border: '1px solid #ef444433', borderRadius: '10px', padding: '12px', textAlign: 'center', color: '#f87171', fontSize: '13px', fontWeight: 600 }}>
                 ❌ This order has been rejected
+                {selected.rejectionEmailSent === false && (
+                  <div style={{ color: '#fbbf24', fontSize: '11px', fontWeight: 600, marginTop: '6px' }}>⚠️ Rejection email failed to send — notify the user manually</div>
+                )}
+                {selected.rejectionEmailSent === true && (
+                  <div style={{ color: '#6b7280', fontSize: '11px', fontWeight: 400, marginTop: '6px' }}>📧 Rejection email sent</div>
+                )}
               </div>
             )}
           </div>
