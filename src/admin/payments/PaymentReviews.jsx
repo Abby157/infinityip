@@ -90,21 +90,25 @@ export default function PaymentReviews() {
       createdAt: serverTimestamp(),
     })
 
-    const emailSent = await sendIPApprovedEmail({
-  toEmail: order.userEmail,
-  toName: order.userEmail.split('@')[0],
-  ipAddress: ip,
-  city: order.city,
-  country: order.country,
-  tier: order.tier,
-  expiryDate: expiryDate.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  }),
-})
-
-console.log('EMAIL RESULT:', emailSent)
+    // Order is already approved and the IP already assigned above — the email is
+    // best-effort, so a send failure here must not look like the approval failed
+    try {
+      await sendIPApprovedEmail({
+        toEmail: order.userEmail,
+        toName: order.userEmail.split('@')[0],
+        ipAddress: ip,
+        city: order.city,
+        country: order.country,
+        tier: order.tier,
+        expiryDate: expiryDate.toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+        }),
+      })
+    } catch (emailErr) {
+      console.error('IP approved email failed:', emailErr)
+    }
 
     setOrders(prev => prev.map(o => o.id === order.id
       ? { ...o, status: 'active', paymentStatus: 'paid', ipAddress: ip, expiryDate }
@@ -140,13 +144,19 @@ console.log('EMAIL RESULT:', emailSent)
         createdAt: serverTimestamp(),
       })
 
-      await sendIPRejectedEmail({
-        toEmail: order.userEmail,
-        toName:  order.userEmail.split('@')[0],
-        city:    order.city,
-        country: order.country,
-        reason:  rejectReason.trim(),
-     })
+      // Order is already rejected above — email is best-effort, so a send
+      // failure here must not look like the rejection failed
+      try {
+        await sendIPRejectedEmail({
+          toEmail: order.userEmail,
+          toName:  order.userEmail.split('@')[0],
+          city:    order.city,
+          country: order.country,
+          reason:  rejectReason.trim(),
+        })
+      } catch (emailErr) {
+        console.error('IP rejected email failed:', emailErr)
+      }
 
       setOrders(prev => prev.map(o => o.id === order.id
         ? { ...o, status: 'rejected', paymentStatus: 'failed', rejectionReason: rejectReason.trim() }
