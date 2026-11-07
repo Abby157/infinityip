@@ -69,29 +69,11 @@ export default function PaymentReviews() {
     const ip = generateIP()
     const expiryDate = new Date()
     expiryDate.setDate(expiryDate.getDate() + 30)
+    const expiryDateLabel = expiryDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 
-    await updateDoc(doc(db, 'orders', order.id), {
-      status:          'active',
-      paymentStatus:   'paid',
-      ipAddress:       ip,
-      approvedAt:      serverTimestamp(),
-      expiryDate:      expiryDate,
-      expiryAlertSent: false,
-      renewalStatus:   'active',
-      updatedAt:       serverTimestamp(),
-    })
-
-    await addDoc(collection(db, 'notifications'), {
-      userId:    order.userId,
-      type:      'payment',
-      title:     'Payment Approved ✅',
-      message:   `Your ${order.tier?.toUpperCase()} IP in ${order.city} has been activated. IP: ${ip}. Expires: ${expiryDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`,
-      read:      false,
-      createdAt: serverTimestamp(),
-    })
-
-    // Order is already approved and the IP already assigned above — the email is
-    // best-effort, so a send failure here must not look like the approval failed
+    // Send the email first (best-effort — never throws) so its outcome can be
+    // merged into the single order write below, instead of a second write that
+    // could itself fail and falsely report an already-successful approval as failed
     let approvalEmailSent = false
     try {
       await sendIPApprovedEmail({
@@ -101,18 +83,33 @@ export default function PaymentReviews() {
         city: order.city,
         country: order.country,
         tier: order.tier,
-        expiryDate: expiryDate.toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-        }),
+        expiryDate: expiryDateLabel,
       })
       approvalEmailSent = true
     } catch (emailErr) {
       console.error('IP approved email failed:', emailErr)
     }
 
-    await updateDoc(doc(db, 'orders', order.id), { approvalEmailSent })
+    await updateDoc(doc(db, 'orders', order.id), {
+      status:            'active',
+      paymentStatus:     'paid',
+      ipAddress:         ip,
+      approvedAt:        serverTimestamp(),
+      expiryDate:        expiryDate,
+      expiryAlertSent:   false,
+      renewalStatus:     'active',
+      approvalEmailSent,
+      updatedAt:         serverTimestamp(),
+    })
+
+    await addDoc(collection(db, 'notifications'), {
+      userId:    order.userId,
+      type:      'payment',
+      title:     'Payment Approved ✅',
+      message:   `Your ${order.tier?.toUpperCase()} IP in ${order.city} has been activated. IP: ${ip}. Expires: ${expiryDateLabel}`,
+      read:      false,
+      createdAt: serverTimestamp(),
+    })
 
     setOrders(prev => prev.map(o => o.id === order.id
       ? { ...o, status: 'active', paymentStatus: 'paid', ipAddress: ip, expiryDate, approvalEmailSent }
@@ -133,25 +130,9 @@ export default function PaymentReviews() {
     if (!rejectReason.trim()) return
     setActing(true)
     try {
-      await updateDoc(doc(db, 'orders', order.id), {
-        status:          'rejected',
-        paymentStatus:   'failed',
-        rejectionReason: rejectReason.trim(),
-        rejectedAt:      serverTimestamp(),
-        updatedAt:       serverTimestamp(),
-      })
-
-      await addDoc(collection(db, 'notifications'), {
-        userId:    order.userId,
-        type:      'alert',
-        title:     'Payment Rejected ❌',
-        message:   `Your order for ${order.city} was rejected. Reason: ${rejectReason.trim()}`,
-        read:      false,
-        createdAt: serverTimestamp(),
-      })
-
-      // Order is already rejected above — email is best-effort, so a send
-      // failure here must not look like the rejection failed
+      // Send the email first (best-effort — never throws) so its outcome can be
+      // merged into the single order write below, instead of a second write that
+      // could itself fail and falsely report an already-successful rejection as failed
       let rejectionEmailSent = false
       try {
         await sendIPRejectedEmail({
@@ -166,7 +147,23 @@ export default function PaymentReviews() {
         console.error('IP rejected email failed:', emailErr)
       }
 
-      await updateDoc(doc(db, 'orders', order.id), { rejectionEmailSent })
+      await updateDoc(doc(db, 'orders', order.id), {
+        status:            'rejected',
+        paymentStatus:     'failed',
+        rejectionReason:   rejectReason.trim(),
+        rejectedAt:        serverTimestamp(),
+        rejectionEmailSent,
+        updatedAt:         serverTimestamp(),
+      })
+
+      await addDoc(collection(db, 'notifications'), {
+        userId:    order.userId,
+        type:      'alert',
+        title:     'Payment Rejected ❌',
+        message:   `Your order for ${order.city} was rejected. Reason: ${rejectReason.trim()}`,
+        read:      false,
+        createdAt: serverTimestamp(),
+      })
 
       setOrders(prev => prev.map(o => o.id === order.id
         ? { ...o, status: 'rejected', paymentStatus: 'failed', rejectionReason: rejectReason.trim(), rejectionEmailSent }
