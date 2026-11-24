@@ -36,6 +36,19 @@ function generateIP() {
   return pools[Math.floor(Math.random() * pools.length)]()
 }
 
+// Run a non-essential side effect (email, status flag, notification) without
+// letting its failure affect the caller — the critical write it follows already
+// succeeded, so this must never be reported as part of that write's result
+async function bestEffort(fn, errorLabel) {
+  try {
+    await fn()
+    return true
+  } catch (err) {
+    console.error(errorLabel, err)
+    return false
+  }
+}
+
 export default function PaymentReviews() {
   const [orders,       setOrders]       = useState([])
   const [loading,      setLoading]      = useState(true)
@@ -71,45 +84,40 @@ export default function PaymentReviews() {
     expiryDate.setDate(expiryDate.getDate() + 30)
     const expiryDateLabel = expiryDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 
-    // Send the email first (best-effort — never throws) so its outcome can be
-    // merged into the single order write below, instead of a second write that
-    // could itself fail and falsely report an already-successful approval as failed
-    let approvalEmailSent = false
-    try {
-      await sendIPApprovedEmail({
-        toEmail: order.userEmail,
-        toName: order.userEmail.split('@')[0],
-        ipAddress: ip,
-        city: order.city,
-        country: order.country,
-        tier: order.tier,
-        expiryDate: expiryDateLabel,
-      })
-      approvalEmailSent = true
-    } catch (emailErr) {
-      console.error('IP approved email failed:', emailErr)
-    }
-
+    // Critical write — the only thing that can land in the outer catch below.
+    // Everything after this point is a non-essential side effect of an
+    // already-successful approval and must never report it as failed.
     await updateDoc(doc(db, 'orders', order.id), {
-      status:            'active',
-      paymentStatus:     'paid',
-      ipAddress:         ip,
-      approvedAt:        serverTimestamp(),
-      expiryDate:        expiryDate,
-      expiryAlertSent:   false,
-      renewalStatus:     'active',
-      approvalEmailSent,
-      updatedAt:         serverTimestamp(),
+      status:          'active',
+      paymentStatus:   'paid',
+      ipAddress:       ip,
+      approvedAt:      serverTimestamp(),
+      expiryDate:      expiryDate,
+      expiryAlertSent: false,
+      renewalStatus:   'active',
+      updatedAt:       serverTimestamp(),
     })
 
-    await addDoc(collection(db, 'notifications'), {
+    const approvalEmailSent = await bestEffort(() => sendIPApprovedEmail({
+      toEmail: order.userEmail,
+      toName: order.userEmail.split('@')[0],
+      ipAddress: ip,
+      city: order.city,
+      country: order.country,
+      tier: order.tier,
+      expiryDate: expiryDateLabel,
+    }), 'IP approved email failed:')
+
+    await bestEffort(() => updateDoc(doc(db, 'orders', order.id), { approvalEmailSent }), 'Failed to persist approvalEmailSent:')
+
+    await bestEffort(() => addDoc(collection(db, 'notifications'), {
       userId:    order.userId,
       type:      'payment',
       title:     'Payment Approved ✅',
       message:   `Your ${order.tier?.toUpperCase()} IP in ${order.city} has been activated. IP: ${ip}. Expires: ${expiryDateLabel}`,
       read:      false,
       createdAt: serverTimestamp(),
-    })
+    }), 'Failed to create approval notification:')
 
     setOrders(prev => prev.map(o => o.id === order.id
       ? { ...o, status: 'active', paymentStatus: 'paid', ipAddress: ip, expiryDate, approvalEmailSent }
@@ -130,40 +138,35 @@ export default function PaymentReviews() {
     if (!rejectReason.trim()) return
     setActing(true)
     try {
-      // Send the email first (best-effort — never throws) so its outcome can be
-      // merged into the single order write below, instead of a second write that
-      // could itself fail and falsely report an already-successful rejection as failed
-      let rejectionEmailSent = false
-      try {
-        await sendIPRejectedEmail({
-          toEmail: order.userEmail,
-          toName:  order.userEmail.split('@')[0],
-          city:    order.city,
-          country: order.country,
-          reason:  rejectReason.trim(),
-        })
-        rejectionEmailSent = true
-      } catch (emailErr) {
-        console.error('IP rejected email failed:', emailErr)
-      }
-
+      // Critical write — the only thing that can land in the outer catch below.
+      // Everything after this point is a non-essential side effect of an
+      // already-successful rejection and must never report it as failed.
       await updateDoc(doc(db, 'orders', order.id), {
-        status:            'rejected',
-        paymentStatus:     'failed',
-        rejectionReason:   rejectReason.trim(),
-        rejectedAt:        serverTimestamp(),
-        rejectionEmailSent,
-        updatedAt:         serverTimestamp(),
+        status:          'rejected',
+        paymentStatus:   'failed',
+        rejectionReason: rejectReason.trim(),
+        rejectedAt:      serverTimestamp(),
+        updatedAt:       serverTimestamp(),
       })
 
-      await addDoc(collection(db, 'notifications'), {
+      const rejectionEmailSent = await bestEffort(() => sendIPRejectedEmail({
+        toEmail: order.userEmail,
+        toName:  order.userEmail.split('@')[0],
+        city:    order.city,
+        country: order.country,
+        reason:  rejectReason.trim(),
+      }), 'IP rejected email failed:')
+
+      await bestEffort(() => updateDoc(doc(db, 'orders', order.id), { rejectionEmailSent }), 'Failed to persist rejectionEmailSent:')
+
+      await bestEffort(() => addDoc(collection(db, 'notifications'), {
         userId:    order.userId,
         type:      'alert',
         title:     'Payment Rejected ❌',
         message:   `Your order for ${order.city} was rejected. Reason: ${rejectReason.trim()}`,
         read:      false,
         createdAt: serverTimestamp(),
-      })
+      }), 'Failed to create rejection notification:')
 
       setOrders(prev => prev.map(o => o.id === order.id
         ? { ...o, status: 'rejected', paymentStatus: 'failed', rejectionReason: rejectReason.trim(), rejectionEmailSent }
@@ -189,14 +192,14 @@ export default function PaymentReviews() {
         status:    'under_review',
         updatedAt: serverTimestamp(),
       })
-      await addDoc(collection(db, 'notifications'), {
+      await bestEffort(() => addDoc(collection(db, 'notifications'), {
         userId:    order.userId,
         type:      'order',
         title:     'Payment Under Review 🔍',
         message:   `Your payment for ${order.city} is being reviewed. We'll notify you shortly.`,
         read:      false,
         createdAt: serverTimestamp(),
-      })
+      }), 'Failed to create under-review notification:')
       setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'under_review' } : o))
       setSelected(null)
       showToast(`🔍 Marked under review`)
